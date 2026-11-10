@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+#include <stdarg.h>
+#include <ctype.h>
 
 #include "server.h"
 
@@ -28,7 +30,6 @@ static void end(void)
 static void app(void)
 {
    SOCKET sock = init_connection();
-   char buffer[BUF_SIZE];
    /* the index for the array */
    int actual = 0;
    int max = sock;
@@ -78,10 +79,9 @@ static void app(void)
             continue;
          }
 
-         /* after connecting the client sends its name */
-         if(read_client(csock, buffer) == -1)
+         if (actual == MAX_CLIENTS)
          {
-            /* disconnected */
+            closesocket(csock);
             continue;
          }
 
@@ -90,9 +90,8 @@ static void app(void)
 
          FD_SET(csock, &rdfs);
 
-         Client c = { csock };
-         strncpy(c.name, buffer, BUF_SIZE - 1);
-         clients[actual] = c;
+         Client client = { csock, "", NON_IDENTIFIE, "", 0 };
+         clients[actual] = client;
          actual++;
       }
       else
@@ -103,20 +102,59 @@ static void app(void)
             /* a client is talking */
             if(FD_ISSET(clients[i].sock, &rdfs))
             {
-               Client client = clients[i];
-               int c = read_client(clients[i].sock, buffer);
-               /* client disconnected */
-               if(c == 0)
+               Client* client = &clients[i];
+               int n = recv(client->sock, client->buf + client->bufLen, BUF_SIZE - client->bufLen - 1, 0);
+               if (n < 0)
                {
-                  closesocket(clients[i].sock);
-                  remove_client(clients, i, &actual);
-                  strncpy(buffer, client.name, BUF_SIZE - 1);
-                  strncat(buffer, " disconnected !", BUF_SIZE - strlen(buffer) - 1);
-                  send_message_to_all_clients(clients, client, actual, buffer, 1);
+                  perror("recv()");
+                  n = 0;
                }
-               else
+               client->bufLen += n;
+               while (1)
                {
-                  send_message_to_all_clients(clients, client, actual, buffer, 0);
+                  char* fin = memchr(client->buf, '\n', client->bufLen);
+                  if (fin == NULL)
+                  {
+                     break;
+                  }
+                  *fin = '\0';
+                  if (fin > client->buf && *(fin - 1) == '\r')
+                  {
+                     *(fin - 1) = '\0';
+                  }
+                  traiterLigne(clients, actual, i, client->buf);
+                  int longueur = (fin - client->buf) + 1;
+                  memmove(client->buf, client->buf + longueur, client->bufLen - longueur);
+                  client->bufLen -= longueur;
+               }
+
+               if (client->bufLen == BUF_SIZE - 1)
+               {
+                  envoyer(clients[i].sock, "ERR SYNTAX ligne trop longue");
+                  client->bufLen = 0;
+               }
+               /* client disconnected */
+               if(n == 0)
+               {
+                  /* on garde le pseudo AVANT remove_client, qui décale le tableau */
+                  char nom[PSEUDO_MAX + 1];
+                  int etaitIdentifie = client->etat != NON_IDENTIFIE;
+                  strcpy(nom, client->name);
+
+                  closesocket(client->sock);
+                  remove_client(clients, i, &actual);
+
+                  /* personne ne connaissait un client non identifié : on ne prévient pas */
+                  if (etaitIdentifie)
+                  {
+                     for (int j = 0; j < actual; j++)
+                     {
+                        if (clients[j].etat != NON_IDENTIFIE)
+                        {
+                           envoyer(clients[j].sock, "INFO %s s'est deconnecte", nom);
+                        }
+                     }
+                  }
                }
                break;
             }
@@ -143,27 +181,6 @@ static void remove_client(Client *clients, int to_remove, int *actual)
    memmove(clients + to_remove, clients + to_remove + 1, (*actual - to_remove - 1) * sizeof(Client));
    /* number client - 1 */
    (*actual)--;
-}
-
-static void send_message_to_all_clients(Client *clients, Client sender, int actual, const char *buffer, char from_server)
-{
-   int i = 0;
-   char message[BUF_SIZE];
-   message[0] = 0;
-   for(i = 0; i < actual; i++)
-   {
-      /* we don't send message to the sender */
-      if(sender.sock != clients[i].sock)
-      {
-         if(from_server == 0)
-         {
-            strncpy(message, sender.name, BUF_SIZE - 1);
-            strncat(message, " : ", sizeof message - strlen(message) - 1);
-         }
-         strncat(message, buffer, sizeof message - strlen(message) - 1);
-         write_client(clients[i].sock, message);
-      }
-   }
 }
 
 static int init_connection(void)
@@ -201,22 +218,6 @@ static void end_connection(int sock)
    closesocket(sock);
 }
 
-static int read_client(SOCKET sock, char *buffer)
-{
-   int n = 0;
-
-   if((n = recv(sock, buffer, BUF_SIZE - 1, 0)) < 0)
-   {
-      perror("recv()");
-      /* if recv error we disonnect the client */
-      n = 0;
-   }
-
-   buffer[n] = 0;
-
-   return n;
-}
-
 static void write_client(SOCKET sock, const char *buffer)
 {
    if(send(sock, buffer, strlen(buffer), 0) < 0)
@@ -226,7 +227,105 @@ static void write_client(SOCKET sock, const char *buffer)
    }
 }
 
-int main(int argc, char **argv)
+static void envoyer(SOCKET sock, const char *format, ...)
+{
+   char ligne[BUF_SIZE];
+   va_list args;
+
+   va_start(args, format);
+   vsnprintf(ligne, sizeof ligne - 1, format, args);  /* -1 : on garde la place du '\n' */
+   va_end(args);
+   strcat(ligne, "\n");
+   write_client(sock, ligne);
+}
+
+static void traiterLigne(Client *clients, int actual, int i, char *ligne)
+{
+   /* ligne vide (l'utilisateur a juste tapé Entrée) : on l'ignore */
+   if (ligne[0] == '\0')
+   {
+      return;
+   }
+   char * commande = ligne ;
+   char * args = strchr(ligne, ' ');
+   if (args != NULL)
+   {
+      *args = '\0';
+      args++;
+   }
+   else
+   {
+      args = "";
+   }
+   if (clients[i].etat == NON_IDENTIFIE && strcmp(commande, "LOGIN") != 0)
+   {
+      envoyer(clients[i].sock, "ERR STATE identifiez-vous avec LOGIN <pseudo>");
+   }
+   else if (strcmp(commande, "LOGIN") == 0)
+   {
+      cmdLogin(clients, actual, i, args);
+   }
+   else if (strcmp(commande, "LIST") == 0)
+   {
+      cmdList(clients, actual, i);
+   }
+   else
+   {
+      envoyer(clients[i].sock, "ERR UNKNOWN commande inconnue");
+   }
+}
+
+static void cmdLogin(Client *clients, int actual, int i, char *args)
+{
+   if (clients[i].etat != NON_IDENTIFIE)
+   {
+      envoyer(clients[i].sock, "ERR STATE vous etes deja identifie");
+      return;
+   }
+   if (strlen(args) == 0 || strlen(args) > PSEUDO_MAX)
+   {
+      envoyer(clients[i].sock, "ERR SYNTAX pseudo de 1 a %d caracteres", PSEUDO_MAX);
+      return;
+   }
+   for (int k = 0; args[k] != '\0'; k++)
+   {
+      /* cast en unsigned char : isalnum n'accepte pas les char négatifs (octets d'un 'é' par ex.) */
+      if (!isalnum((unsigned char)args[k]) && args[k] != '_')
+      {
+         envoyer(clients[i].sock, "ERR SYNTAX pseudo : lettres, chiffres et _ uniquement");
+         return;
+      }
+   }
+   for (int j = 0; j < actual; j++)
+   {
+      if (strcmp(clients[j].name, args) == 0)
+      {
+         envoyer(clients[i].sock, "ERR TAKEN pseudo deja utilise");
+         return;
+      }
+   }
+   strcpy(clients[i].name, args);
+   clients[i].etat = LIBRE;
+   envoyer(clients[i].sock, "OK LOGIN %s", clients[i].name);
+}
+
+static void cmdList(Client *clients, int actual, int i)
+{
+   /* une seule ligne : "USERS alice bob ..." */
+   char liste[BUF_SIZE];
+   int pos = snprintf(liste, sizeof liste, "USERS");
+   for (int j = 0; j < actual; j++)
+   {
+      if (clients[j].etat != NON_IDENTIFIE)
+      {
+         pos += snprintf(liste + pos, sizeof liste - pos, " %s", clients[j].name);
+      }
+   }
+   envoyer(clients[i].sock, "%s", liste);
+}
+
+
+int main(void)
 {
    init();
 

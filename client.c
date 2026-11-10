@@ -31,9 +31,10 @@ static void app(const char *address, const char *name)
    char buffer[BUF_SIZE];
 
    fd_set rdfs;
-
+   char ligne[BUF_SIZE];
+   snprintf(ligne, sizeof ligne, "LOGIN %s\n", name);
    /* send our name */
-   write_server(sock, name);
+   write_server(sock, ligne);
 
    while(1)
    {
@@ -55,19 +56,6 @@ static void app(const char *address, const char *name)
       if(FD_ISSET(STDIN_FILENO, &rdfs))
       {
          fgets(buffer, BUF_SIZE - 1, stdin);
-         {
-            char *p = NULL;
-            p = strstr(buffer, "\n");
-            if(p != NULL)
-            {
-               *p = 0;
-            }
-            else
-            {
-               /* fclean */
-               buffer[BUF_SIZE - 1] = 0;
-            }
-         }
          write_server(sock, buffer);
       }
       else if(FD_ISSET(sock, &rdfs))

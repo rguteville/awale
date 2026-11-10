@@ -34,22 +34,29 @@ typedef struct in_addr IN_ADDR;
 #define MAX_CLIENTS     100
 
 #define BUF_SIZE    1024
+#define PSEUDO_MAX 20
 
+enum Etat { NON_IDENTIFIE, LIBRE, DEFI_ENVOYE, DEFI_RECU, EN_PARTIE, OBSERVATEUR };
 typedef struct
 {
    SOCKET sock;
-   char name[BUF_SIZE];
-}Client;
+   char name[PSEUDO_MAX + 1];  /* +1 pour le '\0' final */
+   enum Etat etat;
+   char buf[BUF_SIZE];         /* octets reçus mais pas encore traités */
+   int bufLen;                 /* nombre d'octets dans buf */
+} Client;
 
 static void init(void);
 static void end(void);
 static void app(void);
 static int init_connection(void);
 static void end_connection(int sock);
-static int read_client(SOCKET sock, char *buffer);
 static void write_client(SOCKET sock, const char *buffer);
-static void send_message_to_all_clients(Client *clients, Client client, int actual, const char *buffer, char from_server);
 static void remove_client(Client *clients, int to_remove, int *actual);
 static void clear_clients(Client *clients, int actual);
+static void traiterLigne(Client *clients, int actual, int i, char *ligne);
+static void cmdLogin(Client *clients, int actual, int i, char *args);
+static void cmdList(Client *clients, int actual, int i);
+static void envoyer(SOCKET sock, const char *format, ...);
 
 #endif /* guard */
