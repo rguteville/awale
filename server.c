@@ -3,7 +3,7 @@
 #include <errno.h>
 #include <string.h>
 
-#include "server2.h"
+#include "server.h"
 
 static void init(void)
 {

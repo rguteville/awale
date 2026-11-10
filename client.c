@@ -3,7 +3,7 @@
 #include <errno.h>
 #include <string.h>
 
-#include "client2.h"
+#include "client.h"
 
 static void init(void)
 {
