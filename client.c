@@ -39,6 +39,11 @@ static void app(const char *address, const char *name)
    char recu[BUF_SIZE]; /* octets reçus mais pas encore traités */
    int recuLen = 0;
 
+   EtatClient etatClient;
+   snprintf(etatClient.monPseudo, sizeof etatClient.monPseudo, "%s", name);
+   strcpy(etatClient.adversaire, "");
+   etatClient.monCamp = -1;
+
    while (1)
    {
       FD_ZERO(&rdfs);
@@ -58,8 +63,15 @@ static void app(const char *address, const char *name)
       /* something from standard input : i.e keyboard */
       if (FD_ISSET(STDIN_FILENO, &rdfs))
       {
-         fgets(buffer, BUF_SIZE - 1, stdin);
-         write_server(sock, buffer);
+         if (fgets(buffer, BUF_SIZE - 1, stdin) == NULL)
+         {
+            printf("Au revoir.\n");
+            break;
+         }
+         else
+         {
+            write_server(sock, buffer);
+         }
       }
       else if (FD_ISSET(sock, &rdfs))
       {
@@ -71,7 +83,6 @@ static void app(const char *address, const char *name)
             break;
          }
          recuLen += n;
-         EtatClient etatClient = {name, "", -1};
          while (1)
          {
             char *fin = memchr(recu, '\n', recuLen);
@@ -154,7 +165,8 @@ static void traiterMessage(EtatClient *e, char *ligne)
       {
          e->monCamp = camp;
          strncpy(e->adversaire, adv, sizeof e->adversaire - 1);
-         printf("Partie %d commencée contre %s, vous êtes le joueur %d.", id, adv, camp);
+         char *campStr = (camp == 0) ? "rangée du bas" : "rangée du haut";
+         printf("Partie %d commencée contre %s, vous êtes le joueur %d (%s).\n", id, adv, camp, campStr);
       }
       else
       {
@@ -192,21 +204,21 @@ static void traiterMessage(EtatClient *e, char *ligne)
          return;
       }
       jeu.joueurCourant = atoi(p);
-      printf(" 1 2 3 4 5 6");
-      plateauEnTexte(&jeu, &texte, sizeof texte);
+      printf("1 2 3 4 5 6\n");
+      plateauEnTexte(&jeu, texte, sizeof texte);
       printf("%s", texte);
       if (jeu.joueurCourant == e->monCamp)
       {
-         printf("A vous de jouer : PLAY <1-6>");
+         printf("A vous de jouer : PLAY <1-6>\n");
       }
       else
       {
-         printf("C'est au tour de l'adversaire.");
+         printf("C'est au tour de l'adversaire.\n");
       }
    }
-   else if (strncmp(ligne, "END ", 6) == 0)
+   else if (strncmp(ligne, "END ", 4) == 0)
    {
-      if (sscanf(ligne, "END %d %20s %15s", &id, &gagnant, &raison) == 3)
+      if (sscanf(ligne, "END %d %20s %15s", &id, gagnant, raison) == 3)
       {
          if (strcmp(gagnant, "NUL") == 0)
          {
