@@ -417,7 +417,7 @@ static void cmdChallenge(Serveur *s, int i, char *args)
    s->clients[j].etat = DEFI_RECU;
    s->clients[j].adversaire = s->clients[i].sock;
    envoyer(s->clients[i].sock, "OK CHALLENGE %s", s->clients[j].name);
-   envoyer(s->clients[j].sock, "CHALLENGED par %s", s->clients[i].name);
+   envoyer(s->clients[j].sock, "CHALLENGED %s", s->clients[i].name);
 }
 
 static void cmdRefuse(Serveur *s, int i)
@@ -440,7 +440,7 @@ static void cmdRefuse(Serveur *s, int i)
    s->clients[i].adversaire = INVALID_SOCKET;
    s->clients[j].adversaire = INVALID_SOCKET;
    envoyer(s->clients[i].sock, "OK REFUSE");
-   envoyer(s->clients[j].sock, "REFUSED par %s", s->clients[i].name);
+   envoyer(s->clients[j].sock, "REFUSED %s", s->clients[i].name);
 }
 
 static void cmdAccept(Serveur *s, int i)
