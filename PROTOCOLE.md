@@ -56,7 +56,12 @@ Colonne « Priorité » : **1** = cœur du sujet (à faire en premier), **2** = 
 | `PLAY <n>` | `EN_PARTIE` | `BOARD ...` (aux joueurs et observateurs) | `SYNTAX`, `ILLEGAL`, `NOTYOURTURN` | 1 |
 | `FORFEIT` | `EN_PARTIE` | `END ...` | — | 2 |
 
-`PLAY <n>` : `n` va de **1 à 6** et désigne la n-ième case **du camp du joueur**, dans le sens du semis. C'est le **serveur** qui convertit `n` en numéro de case absolu (0 à 11) selon le joueur.
+`PLAY <n>` : `n` va de **1 à 6** et désigne la n-ième case **du camp du joueur**, comptée **de gauche à droite sur l'affichage** du plateau. L'affichage est le même pour les deux joueurs : rangée du haut = camp 1 (cases 11 à 6), rangée du bas = camp 0 (cases 0 à 5). C'est le **serveur** qui convertit `n` en numéro de case absolu :
+
+| `n` | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| camp 0 | 0 | 1 | 2 | 3 | 4 | 5 |
+| camp 1 | 11 | 10 | 9 | 8 | 7 | 6 |
 
 ### Chat
 
