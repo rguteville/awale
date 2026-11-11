@@ -158,7 +158,8 @@ static void traiterMessage(EtatClient *e, char *ligne)
    char gagnant[21];
    char raison[16];
    char adv[21];
-   char texte[256];
+   char texte[1024];
+   char codeErr[16];
    if (strncmp(ligne, "START ", 6) == 0)
    {
       if (sscanf(ligne, "START %d %20s %d", &id, adv, &camp) == 3)
@@ -237,6 +238,52 @@ static void traiterMessage(EtatClient *e, char *ligne)
       else
       {
          printf("Erreur lors du parsing de la commande END.\n");
+      }
+   }
+   else if (strncmp(ligne, "CHALLENGED ", 11) == 0)
+   {
+      if (sscanf(ligne, "CHALLENGED %20s", e->adversaire) == 1)
+      {
+         printf("%s vous défie !\n", e->adversaire);
+         printf("Tapez ACCEPT ou REFUSE pour accepter ou refuser la partie.\n");
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande CHALLENGED.\n");
+      }
+   }
+   else if (strncmp(ligne, "MSG ", 4) == 0)
+   {
+      if (sscanf(ligne, "MSG %20s %1023[^\n]", adv, texte) == 2)
+      {
+         printf("[privé] %s : %s\n", adv, texte);
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande MSG.\n");
+      }
+
+   }
+   else if (strncmp(ligne, "ALL ", 4) == 0)
+   {
+      if (sscanf(ligne, "ALL %20s %1023[^\n]", adv, texte) == 2)
+      {
+         printf("[public] %s : %s\n", adv, texte);
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande ALL.\n");
+      }
+   }
+   else if (strncmp(ligne, "ERR ", 4) == 0)
+   {
+      if (sscanf(ligne, "ERR %15s %1023[^\n]", codeErr, texte) == 2)
+      {
+         printf("[ERREUR] : %s, veuillez réessayer.\n", texte);
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande ERR.\n");
       }
    }
    else
