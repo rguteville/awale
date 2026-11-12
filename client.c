@@ -41,6 +41,7 @@ static void app(const char *address, const char *name)
 
    EtatClient etatClient;
    snprintf(etatClient.monPseudo, sizeof etatClient.monPseudo, "%s", name);
+   etatClient.identifie = 0;
    strcpy(etatClient.adversaire, "");
    etatClient.monCamp = -1;
    etatClient.partieObservee = 0;
@@ -161,7 +162,20 @@ static void traiterMessage(EtatClient *e, char *ligne)
    char adv[21];
    char texte[1024];
    char codeErr[16];
-   if (strncmp(ligne, "START ", 6) == 0)
+   if (strncmp(ligne, "OK LOGIN ", 9) == 0)
+   {
+      /* le serveur confirme le pseudo : c'est LUI qui fait foi (le joueur a pu en retaper un autre) */
+      if (sscanf(ligne, "OK LOGIN %20s", e->monPseudo) == 1)
+      {
+         e->identifie = 1;
+         printf("Connecté en tant que %s. Tapez LIST pour voir les joueurs en ligne.\n", e->monPseudo);
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande OK LOGIN.\n");
+      }
+   }
+   else if (strncmp(ligne, "START ", 6) == 0)
    {
       if (sscanf(ligne, "START %d %20s %d", &id, adv, &camp) == 3)
       {
@@ -357,6 +371,15 @@ static void traiterMessage(EtatClient *e, char *ligne)
       if (sscanf(ligne, "ERR %15s %1023[^\n]", codeErr, texte) == 2)
       {
          printf("[ERREUR] : %s, veuillez réessayer.\n", texte);
+         if (!e->identifie)
+         {
+            /* pas encore connecté (pseudo pris, invalide...) : le joueur doit renvoyer LOGIN */
+            if (strcmp(codeErr, "TAKEN") == 0)
+            {
+               printf("Ce pseudo est déjà utilisé par un autre joueur.\n");
+            }
+            printf("Choisissez un pseudo (1 à 20 lettres, chiffres ou _) : tapez LOGIN <pseudo>\n");
+         }
       }
       else
       {

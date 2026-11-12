@@ -37,7 +37,8 @@ typedef struct in_addr IN_ADDR;
 
 typedef struct
 {
-   char monPseudo[21];
+   char monPseudo[21];   /* pseudo ACCEPTÉ par le serveur (mis à jour sur OK LOGIN) */
+   int identifie;        /* 0 tant que le serveur n'a pas répondu OK LOGIN */
    char adversaire[21];
    int monCamp;
    int partieObservee;   /* id de la partie observée (WATCH), 0 si on n'observe rien */

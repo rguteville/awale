@@ -2,3 +2,6 @@ server
 client
 test_awale
 *.o
+# donnees creees par le serveur en marchant
+parties.txt
+bio_*.txt

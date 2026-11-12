@@ -5,8 +5,8 @@ CFLAGS = -Wall -Wextra
 
 all : server client
 
-server : server.c server.h awale.c awale.h
-	$(CC) $(CFLAGS) -o server server.c awale.c
+server : server.c server.h awale.c awale.h sauvegarde.c sauvegarde.h commun.h
+	$(CC) $(CFLAGS) -o server server.c awale.c sauvegarde.c
 
 client : client.c client.h awale.c awale.h
 	$(CC) $(CFLAGS) -o client client.c awale.c

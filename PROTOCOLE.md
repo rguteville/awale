@@ -88,24 +88,34 @@ Colonne « Priorité » : **1** = cœur du sujet (à faire en premier), **2** = 
 | `BIOCLEAR` | tous sauf `NON_IDENTIFIE` | `OK BIOCLEAR` | — | 2 |
 | `BIO <pseudo>` | tous sauf `NON_IDENTIFIE` | `BIOLINE <pseudo> <ligne>` (une par ligne de bio) puis `BIOEND <pseudo>` | `NOTFOUND` | 2 |
 
-Une bio compte au plus **10 lignes** de **1 à 100 caractères**. Elle est conservée tant que le joueur est connecté.
+Une bio compte au plus **10 lignes** de **1 à 100 caractères**. Elle est **sauvegardée sur le serveur** et retrouvée quand le joueur se reconnecte avec le même pseudo. `BIO` n'affiche que la bio d'un joueur **connecté**.
 
 ### Mode privé et amis
 
 | Commande | États autorisés | Réponse si succès | Erreurs possibles | Prio |
 |---|---|---|---|---|
-| `FRIEND <pseudo>` | tous sauf `NON_IDENTIFIE` | `OK FRIEND <pseudo>` | `NOTFOUND` | 2 |
-| `UNFRIEND <pseudo>` | tous sauf `NON_IDENTIFIE` | `OK UNFRIEND <pseudo>` | `NOTFOUND` | 2 |
+| `FRIEND <pseudo>` | tous sauf `NON_IDENTIFIE` | `OK FRIEND <pseudo>` | `NOTFOUND` (pas connecté), `SYNTAX` (soi-même), `FULL` (20 amis) | 2 |
+| `UNFRIEND <pseudo>` | tous sauf `NON_IDENTIFIE` | `OK UNFRIEND <pseudo>` | `NOTFOUND` (pas dans la liste) | 2 |
 | `PRIVATE ON` / `PRIVATE OFF` | tous sauf `NON_IDENTIFIE` | `OK PRIVATE ON` / `OK PRIVATE OFF` | `SYNTAX` | 2 |
 
-En mode privé, seuls les amis **d'au moins un des deux joueurs** peuvent observer leurs parties. Les autres reçoivent `ERR DENIED`.
+- L'amitié est **à sens unique** : « C est ami de A » veut dire que **A** a tapé `FRIEND C`. C n'a rien à faire.
+- `FRIEND` n'accepte qu'un joueur **connecté**, mais la liste retient des **pseudos** : C reste ami de A même s'il se déconnecte puis revient.
+- `FRIEND` d'un joueur déjà dans la liste répond quand même `OK FRIEND`. Au plus **20 amis**.
+- Une partie est **privée** si **au moins un** des deux joueurs est en `PRIVATE ON` au moment du `WATCH`. Seuls les amis **d'au moins un des deux joueurs** peuvent alors l'observer ; les autres reçoivent `ERR DENIED`.
+- Passer en `PRIVATE ON` en cours de partie n'expulse pas les observateurs déjà présents.
+- La liste d'amis et le mode privé sont perdus à la déconnexion.
 
 ### Parties sauvegardées
 
 | Commande | États autorisés | Réponse si succès | Erreurs possibles | Prio |
 |---|---|---|---|---|
-| `HISTORY` | tous sauf `NON_IDENTIFIE` | `HISTORY <id>:<j0>:<j1>:<gagnant> ...` | — | 3 |
-| `REPLAY <id>` | `LIBRE` | une suite de `BOARD ...` puis `END ...` | `NOTFOUND` | 3 |
+| `HISTORY [pseudo]` | tous sauf `NON_IDENTIFIE` | `HISTORY <id>:<j0>:<j1>:<gagnant> ...` | — | 2 |
+| `REPLAY <id>` | `LIBRE` | `OK REPLAY <id> <j0> <j1>`, puis un `BOARD` par position, puis `END ...` | `NOTFOUND`, `SYNTAX` | 2 |
+
+- `HISTORY` liste les **10 parties terminées les plus récentes** du joueur (ou de `<pseudo>` s'il est donné), de la plus ancienne à la plus récente. Aucune partie : `HISTORY` seul.
+- `REPLAY` rejoue la partie avec le moteur : un `BOARD` pour la position de départ, puis un après chaque coup, puis le `END` d'origine. Tout est envoyé d'un coup ; c'est au client de le présenter.
+- Toutes les fins de partie sont sauvegardées, abandons et déconnexions compris. Les numéros de partie restent **uniques même après un redémarrage** du serveur.
+- Les parties sauvegardées sont consultables par tous les joueurs (le mode privé limitera `REPLAY` comme `WATCH`).
 
 ## 4. Messages serveur → client
 
@@ -155,6 +165,7 @@ Il y a deux sortes de messages :
 - Le serveur est le **seul arbitre** : il vérifie chaque coup avec le moteur (`coupLegal` / `jouerCoup`) et ne fait jamais confiance au client.
 - **Déconnexion d'un joueur en partie** : la partie s'arrête, l'adversaire gagne, et tous reçoivent `END <id> <adversaire> DECONNEXION`.
 - **Déconnexion avec un défi en attente** : le défi est annulé, l'autre joueur reçoit `CANCELLED <pseudo>`.
+- **Sauvegarde** : dans le dossier où le serveur est lancé. `parties.txt` contient une partie terminée par ligne : `<id> <j0> <j1> <gagnant|NUL> <raison> <privee 0|1> <nbCoups> <case> <case> ...`, avec les cases en numérotation **absolue** (0 à 11). `bio_<pseudo>.txt` contient une ligne de bio par ligne.
 
 ## 7. Exemples d'échanges
 

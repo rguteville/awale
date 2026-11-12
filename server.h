@@ -31,19 +31,17 @@ typedef struct in_addr IN_ADDR;
 #endif
 
 #include "awale.h"
+#include "commun.h"       /* PSEUDO_MAX, BIO_LIGNES_MAX, BIO_LIGNE_MAX */
+#include "sauvegarde.h"   /* PartieSauvee, sauverPartie, ... */
 
 #define CRLF "\r\n"
 #define PORT 1977
 #define MAX_CLIENTS 100
 
 #define BUF_SIZE 1024
-#define PSEUDO_MAX 20
 
 #define MAX_PARTIES 50
 #define MAX_OBSERVATEURS 10
-
-#define BIO_LIGNES_MAX 10
-#define BIO_LIGNE_MAX 100
 
 enum Etat
 {
@@ -75,6 +73,8 @@ typedef struct
    SOCKET joueurs[2];                     /* joueurs[0] joue le camp 0, joueurs[1] le camp 1 */
    SOCKET observateurs[MAX_OBSERVATEURS]; /* pour plus tard */
    int nbObservateurs;
+   PartieSauvee historique;
+
 } Partie;
 
 /* tout l'état du serveur : chaque fonction reçoit un Serveur * au lieu de plusieurs paramètres.

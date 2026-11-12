@@ -39,7 +39,7 @@ static void app(void)
    static Serveur serveur;
    Serveur *s = &serveur;
    s->nbClients = 0;
-   s->prochainId = 1;
+   s->prochainId = lireDernierId() + 1;
 
    fd_set rdfs;
 
@@ -528,7 +528,14 @@ static void cmdAccept(Serveur *s, int i)
    partie->joueurs[campDeI] = s->clients[i].sock;
    partie->joueurs[1 - campDeI] = s->clients[j].sock;
    partie->nbObservateurs = 0;
+   partie->historique.id = partie->id;
+   strcpy(partie->historique.joueurs[campDeI], s->clients[i].name);
+   strcpy(partie->historique.joueurs[1 - campDeI], s->clients[j].name);
+   partie->historique.privee = 0;
+   partie->historique.nbCoups = 0;
+
    initJeu(&partie->jeu, 0);
+
    s->clients[i].partie = partie - s->parties; /* indice de la partie dans le tableau */
    s->clients[j].partie = partie - s->parties;
    s->clients[i].etat = EN_PARTIE;
@@ -589,6 +596,8 @@ static void cmdPlay(Serveur *s, int i, char *args)
       envoyer(s->clients[i].sock, "ERR ILLEGAL coup illegal");
       return;
    }
+   partie->historique.coups[partie->historique.nbCoups] = numCaseCliquee;
+   partie->historique.nbCoups++;
    envoyerPlateau(s, partie);
    if (partie->jeu.fini)
    {
@@ -607,7 +616,15 @@ static void cmdPlay(Serveur *s, int i, char *args)
       }
       const char *pseudoGagnant;
       int g = gagnant(&partie->jeu);
-      int j = trouverParSocket(s, partie->joueurs[g]);
+      int j;
+      if (g == -1)
+      {
+         j = -1;
+      }
+      else 
+      {
+         trouverParSocket(s, partie->joueurs[g]);
+      }
       pseudoGagnant = (g == -1 || j == -1) ? "NUL" : s->clients[j].name;
       terminerPartie(s, partie, pseudoGagnant, raison);
    }
@@ -686,6 +703,9 @@ static void terminerPartie(Serveur *s, Partie *partie, const char *gagnant, cons
       }
    }
    partie->nbObservateurs = 0;
+   strcpy(partie->historique.gagnant, gagnant);
+   strcpy(partie->historique.raison, raison);
+   sauverPartie(&partie->historique);
    partie->active = 0;
 }
 
