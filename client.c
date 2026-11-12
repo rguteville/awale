@@ -408,6 +408,19 @@ static void traiterMessage(EtatClient *e, char *ligne)
          printf("Erreur lors du parsing de la commande BIOEND.\n");
       }
    }
+   else if (strncmp(ligne, "OK REPLAY ", 10) == 0)
+   {
+      char j0[PSEUDO_MAX + 1], j1[PSEUDO_MAX + 1];
+      if (sscanf(ligne, "OK REPLAY %d %20s %20s", &id, j0, j1) == 3)
+      {
+         e->partieObservee = id;
+         printf("Partie %d rejouee : %s (joueur 0) contre %s (joueur 1)\n", id, j0, j1);
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande OK REPLAY.\n");
+      }
+   }
    else
    {
       printf("%s\n", ligne);

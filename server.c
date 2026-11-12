@@ -355,6 +355,10 @@ static void traiterLigne(Serveur *s, int i, char *ligne)
    {
       cmdAll(s, i, args);
    }
+   else if (strcmp(commande, "REPLAY") == 0)
+   {
+      cmdReplay(s, i, args);
+   }
    else
    {
       envoyer(s->clients[i].sock, "ERR UNKNOWN commande inconnue");
@@ -546,20 +550,20 @@ static void cmdAccept(Serveur *s, int i)
    envoyerPlateau(s, partie);
 }
 
-static void formaterPlateau(const Partie *partie, char *ligne, size_t taille)
+static void formaterPlateau(int id, const struct Jeu *jeu, char *ligne, size_t taille)
 {
-   int pos = snprintf(ligne, taille, "BOARD %d", partie->id);
+   int pos = snprintf(ligne, taille, "BOARD %d", id);
    for (int k = 0; k < NB_CASES; k++)
    {
-      pos += snprintf(ligne + pos, taille - pos, " %d", partie->jeu.plateau[k]);
+      pos += snprintf(ligne + pos, taille - pos, " %d", jeu->plateau[k]);
    }
-   snprintf(ligne + pos, taille - pos, " %d %d %d", partie->jeu.score[0], partie->jeu.score[1], partie->jeu.joueurCourant);
+   snprintf(ligne + pos, taille - pos, " %d %d %d", jeu->score[0], jeu->score[1], jeu->joueurCourant);
 }
 
 static void envoyerPlateau(Serveur *s, Partie *partie)
 {
    char ligne[BUF_SIZE];
-   formaterPlateau(partie, ligne, sizeof ligne);
+   formaterPlateau(partie->id, &partie->jeu, ligne, sizeof ligne);
    for (int k = 0; k < 2; k++)
    {
       envoyer(partie->joueurs[k], "%s", ligne);
@@ -783,7 +787,7 @@ static void cmdWatch(Serveur *s, int i, char *args)
    envoyer(s->clients[i].sock, "OK WATCH %d", idPartie);
    /* le plateau actuel, au nouvel observateur SEULEMENT (pas de BOARD en double chez les joueurs) */
    char ligne[BUF_SIZE];
-   formaterPlateau(partie, ligne, sizeof ligne);
+   formaterPlateau(partie->id, &partie->jeu, ligne, sizeof ligne);
    envoyer(s->clients[i].sock, "%s", ligne);
 }
 
@@ -891,6 +895,46 @@ static void cmdAll(Serveur *s, int i, char *args)
    envoyer(s->clients[i].sock, "OK ALL");
 
 }
+
+static void cmdReplay(Serveur *s, int i, char *args)
+{
+   if (s->clients[i].etat != LIBRE)
+   {
+      envoyer(s->clients[i].sock, "ERR STATE");
+      return;
+   }
+   int id = atoi(args);
+   if (id <= 0)
+   {
+      envoyer(s->clients[i].sock, "ERR SYNTAX usage : REPLAY <id>");
+      return;
+   }
+   PartieSauvee partieSauvee;
+   if (chercherPartie(id, &partieSauvee) == 0)
+   {
+      envoyer(s->clients[i].sock, "ERR NOTFOUND partie inconnue");
+      return;
+   }
+   // (TODO si ps.privee et pas ami → ERR DENIED)
+   envoyer(s->clients[i].sock, "OK REPLAY %d %s %s", id, partieSauvee.joueurs[0], partieSauvee.joueurs[1]);
+   struct Jeu jeu;
+   initJeu(&jeu, 0);
+   char ligne[BUF_SIZE];
+   formaterPlateau(id, &jeu, ligne, sizeof ligne);
+   envoyer(s->clients[i].sock, "%s", ligne);
+   for (int k = 0; k < partieSauvee.nbCoups; k++)
+   {
+      if (jouerCoup(&jeu, partieSauvee.coups[k]) < 0)
+      {
+         envoyer(s->clients[i].sock, "INFO partie %d : fichier de sauvegarde abime", id);
+         break;
+      }
+      formaterPlateau(id, &jeu, ligne, sizeof ligne);
+      envoyer(s->clients[i].sock, "%s", ligne);
+   }
+   envoyer(s->clients[i].sock, "END %d %s %s", id, partieSauvee.gagnant, partieSauvee.raison);
+}
+
 
 int main(void)
 {

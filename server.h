@@ -104,7 +104,7 @@ static int trouverParSocket(Serveur *s, SOCKET sock);        /* indice, ou -1 */
 static void cmdChallenge(Serveur *s, int i, char *args);
 static void cmdRefuse(Serveur *s, int i);
 static void cmdAccept(Serveur *s, int i);
-static void formaterPlateau(const Partie *partie, char *ligne, size_t taille); /* écrit "BOARD ..." dans ligne, n'envoie rien */
+static void formaterPlateau(int id, const struct Jeu *jeu, char *ligne, size_t taille); /* écrit "BOARD ..." dans ligne, n'envoie rien */
 static void envoyerPlateau(Serveur *s, Partie *partie);
 static void cmdPlay(Serveur *s, int i, char *args);
 static void terminerPartie(Serveur *s, Partie *partie, const char *gagnant, const char *raison);
@@ -121,5 +121,7 @@ static void cmdBioClear(Serveur *s, int i);
 static void cmdBioAdd(Serveur *s, int i, char *args);
 static void cmdMsg(Serveur *s, int i, char *args);
 static void cmdAll(Serveur *s, int i, char *args);
+static void cmdReplay(Serveur *s, int i, char *args);
+
 
 #endif /* guard */

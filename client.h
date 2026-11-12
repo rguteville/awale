@@ -16,6 +16,7 @@ typedef int socklen_t;
 #include <unistd.h> /* close */
 #include <netdb.h> /* gethostbyname */
 #include "awale.h"
+#include "commun.h" /* PSEUDO_MAX */
 #define INVALID_SOCKET -1
 #define SOCKET_ERROR -1
 #define closesocket(s) close(s)

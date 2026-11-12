@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "sauvegarde.h"
 
@@ -56,4 +57,43 @@ int lireDernierId()
    }
    fclose(f);
    return max;
+}
+
+int  chercherPartie(int id, PartieSauvee *p)
+{
+   FILE *f = fopen(FICHIER_PARTIES, "r");
+   if (f == NULL)
+   {
+      return 0;
+   }
+   char ligne[1024];
+   while (fgets(ligne, sizeof ligne, f) != NULL)
+   {
+      int lu;
+      if (sscanf(ligne, "%d", &lu) != 1 || lu != id )
+      {
+         continue;
+      }
+      int pos;
+      if (sscanf(ligne, "%d %20s %20s %20s %15s %d %d%n", &p->id, p->joueurs[0], p->joueurs[1], p->gagnant, p->raison, &p->privee, &p->nbCoups, &pos) != 7 || p->nbCoups < 0 || p->nbCoups > NB_COUPS_MAX)
+      {
+         fclose(f);
+         return 0;
+      }
+      char * mot = strtok(ligne + pos, " \n");
+      for (int k = 0; k < p->nbCoups; k++)
+      {
+         if (mot == NULL)
+         {
+            fclose(f);
+            return 0;
+         }
+         p->coups[k] = atoi(mot);
+         mot = strtok(NULL, " \n");
+      }
+      fclose(f);
+      return 1;
+   }
+   fclose(f);
+   return 0;
 }
