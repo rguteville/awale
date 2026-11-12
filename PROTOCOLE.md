@@ -77,7 +77,7 @@ Colonne « Priorité » : **1** = cœur du sujet (à faire en premier), **2** = 
 | Commande | États autorisés | Réponse si succès | Erreurs possibles | Prio |
 |---|---|---|---|---|
 | `GAMES` | tous sauf `NON_IDENTIFIE` | `GAMES <id>:<j0>:<j1> ...` | — | 2 |
-| `WATCH <id>` | `LIBRE` | `OK WATCH <id>` puis `BOARD ...` | `NOTFOUND`, `DENIED` | 2 |
+| `WATCH <id>` | `LIBRE` | `OK WATCH <id>` puis `BOARD ...` | `NOTFOUND`, `DENIED`, `FULL` (trop d'observateurs) | 2 |
 | `UNWATCH` | `OBSERVATEUR` | `OK UNWATCH` | — | 2 |
 
 ### Bio
@@ -145,7 +145,7 @@ Il y a deux sortes de messages :
 | `ILLEGAL` | Coup refusé par les règles |
 | `NOTYOURTURN` | Ce n'est pas votre tour |
 | `DENIED` | Partie privée : vous n'êtes pas ami avec les joueurs |
-| `FULL` | Bio déjà pleine (10 lignes) |
+| `FULL` | Plus de place : bio déjà pleine (10 lignes), ou partie avec déjà trop d'observateurs |
 
 ## 6. Règles côté serveur
 

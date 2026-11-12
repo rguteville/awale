@@ -91,11 +91,17 @@ static int trouverParSocket(Serveur *s, SOCKET sock);         /* indice, ou -1 *
 static void cmdChallenge(Serveur *s, int i, char *args);
 static void cmdRefuse(Serveur *s, int i);
 static void cmdAccept(Serveur *s, int i);
+static void formaterPlateau(const Partie *partie, char *ligne, size_t taille);  /* écrit "BOARD ..." dans ligne, n'envoie rien */
 static void envoyerPlateau(Serveur *s, Partie *partie);
 static void cmdPlay(Serveur *s, int i, char *args);
 static void terminerPartie(Serveur *s, Partie *partie, const char *gagnant, const char *raison);
 static void cmdForfeit(Serveur *s, int i);
 static void abandonnerPartie(Serveur *s, int i, const char *raison);  /* i perd, son adversaire gagne */
 static void cmdCancel(Serveur *s, int i);
+static void cmdGames(Serveur *s, int i);
+static void cmdWatch(Serveur *s, int i, char *args);
+static void cmdUnwatch(Serveur *s, int i);
+static int trouverPartieParId(Serveur *s, int idPartie);
+static void retirerObservateur(Serveur *s, int i);
 
 #endif /* guard */

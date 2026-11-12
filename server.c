@@ -13,12 +13,13 @@ static void init(void)
 #ifdef WIN32
    WSADATA wsa;
    int err = WSAStartup(MAKEWORD(2, 2), &wsa);
-   if(err < 0)
+   if (err < 0)
    {
       puts("WSAStartup failed !");
       exit(EXIT_FAILURE);
    }
-   signal(SIGPIPE, SIG_IGN);
+#else
+   signal(SIGPIPE, SIG_IGN);   /* Mac/Linux : écrire à un client parti ne doit pas tuer le serveur */
 #endif
 }
 
@@ -42,7 +43,7 @@ static void app(void)
 
    fd_set rdfs;
 
-   while(1)
+   while (1)
    {
       int i = 0;
       FD_ZERO(&rdfs);
@@ -54,30 +55,30 @@ static void app(void)
       FD_SET(sock, &rdfs);
 
       /* add socket of each client */
-      for(i = 0; i < s->nbClients; i++)
+      for (i = 0; i < s->nbClients; i++)
       {
          FD_SET(s->clients[i].sock, &rdfs);
       }
 
-      if(select(max + 1, &rdfs, NULL, NULL, NULL) == -1)
+      if (select(max + 1, &rdfs, NULL, NULL, NULL) == -1)
       {
          perror("select()");
          exit(errno);
       }
 
       /* something from standard input : i.e keyboard */
-      if(FD_ISSET(STDIN_FILENO, &rdfs))
+      if (FD_ISSET(STDIN_FILENO, &rdfs))
       {
          /* stop process when type on keyboard */
          break;
       }
-      else if(FD_ISSET(sock, &rdfs))
+      else if (FD_ISSET(sock, &rdfs))
       {
          /* new client */
-         SOCKADDR_IN csin = { 0 };
+         SOCKADDR_IN csin = {0};
          socklen_t sinsize = sizeof csin;
          int csock = accept(sock, (SOCKADDR *)&csin, &sinsize);
-         if(csock == SOCKET_ERROR)
+         if (csock == SOCKET_ERROR)
          {
             perror("accept()");
             continue;
@@ -94,19 +95,19 @@ static void app(void)
 
          FD_SET(csock, &rdfs);
 
-         Client client = { csock, "", NON_IDENTIFIE, "", 0, INVALID_SOCKET, -1 };
+         Client client = {csock, "", NON_IDENTIFIE, "", 0, INVALID_SOCKET, -1};
          s->clients[s->nbClients] = client;
          s->nbClients++;
       }
       else
       {
          int i = 0;
-         for(i = 0; i < s->nbClients; i++)
+         for (i = 0; i < s->nbClients; i++)
          {
             /* a client is talking */
-            if(FD_ISSET(s->clients[i].sock, &rdfs))
+            if (FD_ISSET(s->clients[i].sock, &rdfs))
             {
-               Client* client = &s->clients[i];
+               Client *client = &s->clients[i];
                int n = recv(client->sock, client->buf + client->bufLen, BUF_SIZE - client->bufLen - 1, 0);
                if (n < 0)
                {
@@ -116,7 +117,7 @@ static void app(void)
                client->bufLen += n;
                while (1)
                {
-                  char* fin = memchr(client->buf, '\n', client->bufLen);
+                  char *fin = memchr(client->buf, '\n', client->bufLen);
                   if (fin == NULL)
                   {
                      break;
@@ -138,7 +139,7 @@ static void app(void)
                   client->bufLen = 0;
                }
                /* client disconnected */
-               if(n == 0)
+               if (n == 0)
                {
                   /* on garde le pseudo AVANT remove_client, qui décale le tableau */
                   char nom[PSEUDO_MAX + 1];
@@ -158,6 +159,10 @@ static void app(void)
                   if (s->clients[i].etat == EN_PARTIE)
                   {
                      abandonnerPartie(s, i, "DECONNEXION");
+                  }
+                  if (s->clients[i].etat == OBSERVATEUR)
+                  {
+                     retirerObservateur(s, i);
                   }
                   closesocket(client->sock);
                   remove_client(s, i);
@@ -187,7 +192,7 @@ static void app(void)
 static void clear_clients(Serveur *s)
 {
    int i = 0;
-   for(i = 0; i < s->nbClients; i++)
+   for (i = 0; i < s->nbClients; i++)
    {
       closesocket(s->clients[i].sock);
    }
@@ -204,9 +209,9 @@ static void remove_client(Serveur *s, int to_remove)
 static int init_connection(void)
 {
    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
-   SOCKADDR_IN sin = { 0 };
+   SOCKADDR_IN sin = {0};
 
-   if(sock == INVALID_SOCKET)
+   if (sock == INVALID_SOCKET)
    {
       perror("socket()");
       exit(errno);
@@ -216,13 +221,16 @@ static int init_connection(void)
    sin.sin_port = htons(PORT);
    sin.sin_family = AF_INET;
 
-   if(bind(sock,(SOCKADDR *) &sin, sizeof sin) == SOCKET_ERROR)
+   int oui = 1;
+   setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&oui, sizeof oui);
+
+   if (bind(sock, (SOCKADDR *)&sin, sizeof sin) == SOCKET_ERROR)
    {
       perror("bind()");
       exit(errno);
    }
 
-   if(listen(sock, MAX_CLIENTS) == SOCKET_ERROR)
+   if (listen(sock, MAX_CLIENTS) == SOCKET_ERROR)
    {
       perror("listen()");
       exit(errno);
@@ -238,7 +246,7 @@ static void end_connection(int sock)
 
 static void write_client(SOCKET sock, const char *buffer)
 {
-   if(send(sock, buffer, strlen(buffer), 0) < 0)
+   if (send(sock, buffer, strlen(buffer), 0) < 0)
    {
       perror("send()");
    }
@@ -250,7 +258,7 @@ static void envoyer(SOCKET sock, const char *format, ...)
    va_list args;
 
    va_start(args, format);
-   vsnprintf(ligne, sizeof ligne - 1, format, args);  /* -1 : on garde la place du '\n' */
+   vsnprintf(ligne, sizeof ligne - 1, format, args); /* -1 : on garde la place du '\n' */
    va_end(args);
    strcat(ligne, "\n");
    write_client(sock, ligne);
@@ -263,8 +271,8 @@ static void traiterLigne(Serveur *s, int i, char *ligne)
    {
       return;
    }
-   char * commande = ligne ;
-   char * args = strchr(ligne, ' ');
+   char *commande = ligne;
+   char *args = strchr(ligne, ' ');
    if (args != NULL)
    {
       *args = '\0';
@@ -309,6 +317,18 @@ static void traiterLigne(Serveur *s, int i, char *ligne)
    else if (strcmp(commande, "CANCEL") == 0)
    {
       cmdCancel(s, i);
+   }
+   else if (strcmp(commande, "GAMES") == 0)
+   {
+      cmdGames(s, i);
+   }
+   else if (strcmp(commande, "WATCH") == 0)
+   {
+      cmdWatch(s, i, args);
+   }
+   else if (strcmp(commande, "UNWATCH") == 0)
+   {
+      cmdUnwatch(s, i);
    }
    else
    {
@@ -484,28 +504,37 @@ static void cmdAccept(Serveur *s, int i)
    partie->joueurs[1 - campDeI] = s->clients[j].sock;
    partie->nbObservateurs = 0;
    initJeu(&partie->jeu, 0);
-   s->clients[i].partie = partie - s->parties;  /* indice de la partie dans le tableau */
+   s->clients[i].partie = partie - s->parties; /* indice de la partie dans le tableau */
    s->clients[j].partie = partie - s->parties;
    s->clients[i].etat = EN_PARTIE;
    s->clients[j].etat = EN_PARTIE;
-   
+
    envoyer(s->clients[i].sock, "START %d %s %d", partie->id, s->clients[j].name, campDeI);
    envoyer(s->clients[j].sock, "START %d %s %d", partie->id, s->clients[i].name, 1 - campDeI);
    envoyerPlateau(s, partie);
 }
 
+static void formaterPlateau(const Partie *partie, char *ligne, size_t taille)
+{
+   int pos = snprintf(ligne, taille, "BOARD %d", partie->id);
+   for (int k = 0; k < NB_CASES; k++)
+   {
+      pos += snprintf(ligne + pos, taille - pos, " %d", partie->jeu.plateau[k]);
+   }
+   snprintf(ligne + pos, taille - pos, " %d %d %d", partie->jeu.score[0], partie->jeu.score[1], partie->jeu.joueurCourant);
+}
+
 static void envoyerPlateau(Serveur *s, Partie *partie)
 {
    char ligne[BUF_SIZE];
-   int pos = snprintf(ligne, sizeof ligne, "BOARD %d", partie->id);
-   for (int k = 0; k < NB_CASES; k++)
-   {
-      pos += snprintf(ligne + pos, sizeof ligne - pos, " %d", partie->jeu.plateau[k]);
-   }
-   pos += snprintf(ligne + pos, sizeof ligne - pos, " %d %d %d", partie->jeu.score[0], partie->jeu.score[1], partie->jeu.joueurCourant);
+   formaterPlateau(partie, ligne, sizeof ligne);
    for (int k = 0; k < 2; k++)
    {
       envoyer(partie->joueurs[k], "%s", ligne);
+   }
+   for (int k = 0; k < partie->nbObservateurs; k++)
+   {
+      envoyer(partie->observateurs[k], "%s", ligne);
    }
 }
 
@@ -538,7 +567,7 @@ static void cmdPlay(Serveur *s, int i, char *args)
    envoyerPlateau(s, partie);
    if (partie->jeu.fini)
    {
-      const char * raison;
+      const char *raison;
       if (partie->jeu.score[0] > 24 || partie->jeu.score[1] > 24)
       {
          raison = "SCORE";
@@ -551,7 +580,7 @@ static void cmdPlay(Serveur *s, int i, char *args)
       {
          raison = "BLOQUE";
       }
-      const char * pseudoGagnant;
+      const char *pseudoGagnant;
       int g = gagnant(&partie->jeu);
       int j = trouverParSocket(s, partie->joueurs[g]);
       pseudoGagnant = (g == -1 || j == -1) ? "NUL" : s->clients[j].name;
@@ -600,7 +629,6 @@ static void cmdCancel(Serveur *s, int i)
    envoyer(s->clients[j].sock, "CANCELLED %s", s->clients[i].name);
 }
 
-
 static void terminerPartie(Serveur *s, Partie *partie, const char *gagnant, const char *raison)
 {
    for (int k = 0; k < 2; k++)
@@ -613,14 +641,119 @@ static void terminerPartie(Serveur *s, Partie *partie, const char *gagnant, cons
          s->clients[j].adversaire = INVALID_SOCKET;
          s->clients[j].partie = -1;
       }
-      else 
+      else
       {
          fprintf(stderr, "Erreur : joueur %d de la partie %d introuvable dans le tableau des clients\n", k, partie->id);
       }
    }
+   for (int k = 0; k < partie->nbObservateurs; k++)
+   {
+      envoyer(partie->observateurs[k], "END %d %s %s", partie->id, gagnant, raison);
+      int j = trouverParSocket(s, partie->observateurs[k]);
+      if (j != -1)
+      {
+         s->clients[j].etat = LIBRE;
+         s->clients[j].partie = -1;
+      }
+      else
+      {
+         fprintf(stderr, "Erreur : observateur %d de la partie %d introuvable dans le tableau des clients\n", k, partie->id);
+      }
+   }
+   partie->nbObservateurs = 0;
    partie->active = 0;
 }
 
+static void retirerObservateur(Serveur *s, int i)
+{
+   Partie *partie = &s->parties[s->clients[i].partie];
+   for (int k = 0; k < partie->nbObservateurs; k++)
+   {
+      if (partie->observateurs[k] == s->clients[i].sock)
+      {
+         partie->observateurs[k] = partie->observateurs[partie->nbObservateurs - 1];
+         partie->nbObservateurs--;
+         break;
+      }
+   }
+   s->clients[i].etat = LIBRE;
+   s->clients[i].partie = -1;
+}
+
+static void cmdGames(Serveur *s, int i)
+{
+   char ligne[BUF_SIZE];
+   int pos = snprintf(ligne, sizeof ligne, "GAMES");
+   for (int k = 0; k < MAX_PARTIES; k++)
+   {
+      if (s->parties[k].active)
+      {
+         int j0 = trouverParSocket(s, s->parties[k].joueurs[0]);
+         int j1 = trouverParSocket(s, s->parties[k].joueurs[1]);
+         if (j0 != -1 && j1 != -1)
+         {
+            pos += snprintf(ligne + pos, sizeof ligne - pos, " %d:%s:%s", s->parties[k].id, s->clients[j0].name, s->clients[j1].name);
+         }
+      }
+   }
+   envoyer(s->clients[i].sock, "%s", ligne);
+}
+
+static int trouverPartieParId(Serveur *s, int idPartie)
+{
+   for (int k = 0; k < MAX_PARTIES; k++)
+   {
+      if (s->parties[k].active && s->parties[k].id == idPartie)
+      {
+         return k;
+      }
+   }
+   return -1;
+}
+
+static void cmdWatch(Serveur *s, int i, char *args)
+{
+   if (s->clients[i].etat != LIBRE)
+   {
+      envoyer(s->clients[i].sock, "ERR STATE vous n'etes pas libre pour observer");
+      return;
+   }
+   int idPartie = atoi(args);
+   int k = trouverPartieParId(s, idPartie);
+   if (k == -1)
+   {
+      envoyer(s->clients[i].sock, "ERR NOTFOUND partie %d introuvable", idPartie);
+      return;
+   }
+   Partie *partie = &s->parties[k];
+   if (partie->nbObservateurs >= MAX_OBSERVATEURS)
+   {
+      envoyer(s->clients[i].sock, "ERR FULL trop d'observateurs pour la partie %d", idPartie);
+      return;
+   }
+   partie->observateurs[partie->nbObservateurs] = s->clients[i].sock;
+   partie->nbObservateurs++;
+   s->clients[i].etat = OBSERVATEUR;
+   s->clients[i].partie = k;
+   envoyer(s->clients[i].sock, "OK WATCH %d", idPartie);
+   /* le plateau actuel, au nouvel observateur SEULEMENT (pas de BOARD en double chez les joueurs) */
+   char ligne[BUF_SIZE];
+   formaterPlateau(partie, ligne, sizeof ligne);
+   envoyer(s->clients[i].sock, "%s", ligne);
+}
+
+static void cmdUnwatch(Serveur *s, int i)
+{
+   if (s->clients[i].etat == OBSERVATEUR)
+   {
+      retirerObservateur(s, i);
+      envoyer(s->clients[i].sock, "OK UNWATCH");
+   }
+   else
+   {
+      envoyer(s->clients[i].sock, "ERR STATE vous n'etes pas observateur");
+   }
+}
 
 int main(void)
 {
