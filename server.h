@@ -94,5 +94,8 @@ static void cmdAccept(Serveur *s, int i);
 static void envoyerPlateau(Serveur *s, Partie *partie);
 static void cmdPlay(Serveur *s, int i, char *args);
 static void terminerPartie(Serveur *s, Partie *partie, const char *gagnant, const char *raison);
+static void cmdForfeit(Serveur *s, int i);
+static void abandonnerPartie(Serveur *s, int i, const char *raison);  /* i perd, son adversaire gagne */
+static void cmdCancel(Serveur *s, int i);
 
 #endif /* guard */

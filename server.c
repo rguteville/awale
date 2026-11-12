@@ -152,20 +152,12 @@ static void app(void)
                      {
                         s->clients[j].etat = LIBRE;
                         s->clients[j].adversaire = INVALID_SOCKET;
-                        envoyer(s->clients[j].sock, "CANCELLED %s s'est deconnecte", nom);
+                        envoyer(s->clients[j].sock, "CANCELLED %s", nom);
                      }
                   }
                   if (s->clients[i].etat == EN_PARTIE)
                   {
-                     int k = trouverParSocket(s, s->clients[i].adversaire);
-                     if (k != -1)
-                     {
-                        terminerPartie(s, &s->parties[s->clients[i].partie], s->clients[k].name, "DECONNEXION");
-                     }
-                     else
-                     {
-                        terminerPartie(s, &s->parties[s->clients[i].partie], "NUL", "DECONNEXION");
-                     }
+                     abandonnerPartie(s, i, "DECONNEXION");
                   }
                   closesocket(client->sock);
                   remove_client(s, i);
@@ -309,6 +301,14 @@ static void traiterLigne(Serveur *s, int i, char *ligne)
    else if (strcmp(commande, "PLAY") == 0)
    {
       cmdPlay(s, i, args);
+   }
+   else if (strcmp(commande, "FORFEIT") == 0)
+   {
+      cmdForfeit(s, i);
+   }
+   else if (strcmp(commande, "CANCEL") == 0)
+   {
+      cmdCancel(s, i);
    }
    else
    {
@@ -558,6 +558,48 @@ static void cmdPlay(Serveur *s, int i, char *args)
       terminerPartie(s, partie, pseudoGagnant, raison);
    }
 }
+
+static void cmdForfeit(Serveur *s, int i)
+{
+   if (s->clients[i].etat != EN_PARTIE)
+   {
+      envoyer(s->clients[i].sock, "ERR STATE vous n'etes pas en partie");
+      return;
+   }
+   abandonnerPartie(s, i, "ABANDON");
+}
+
+static void abandonnerPartie(Serveur *s, int i, const char *raison)
+{
+   Partie *partie = &s->parties[s->clients[i].partie];
+   int j = trouverParSocket(s, s->clients[i].adversaire);
+   const char *pseudoGagnant = (j == -1) ? "NUL" : s->clients[j].name;
+   terminerPartie(s, partie, pseudoGagnant, raison);
+}
+
+static void cmdCancel(Serveur *s, int i)
+{
+   if (s->clients[i].etat != DEFI_ENVOYE)
+   {
+      envoyer(s->clients[i].sock, "ERR STATE vous n'avez pas de defi en attente");
+      return;
+   }
+   int j = trouverParSocket(s, s->clients[i].adversaire);
+   if (j == -1)
+   {
+      envoyer(s->clients[i].sock, "ERR STATE le defi n'est pas valide");
+      s->clients[i].etat = LIBRE;
+      s->clients[i].adversaire = INVALID_SOCKET;
+      return;
+   }
+   s->clients[i].etat = LIBRE;
+   s->clients[j].etat = LIBRE;
+   s->clients[i].adversaire = INVALID_SOCKET;
+   s->clients[j].adversaire = INVALID_SOCKET;
+   envoyer(s->clients[i].sock, "OK CANCEL");
+   envoyer(s->clients[j].sock, "CANCELLED %s", s->clients[i].name);
+}
+
 
 static void terminerPartie(Serveur *s, Partie *partie, const char *gagnant, const char *raison)
 {

@@ -242,14 +242,36 @@ static void traiterMessage(EtatClient *e, char *ligne)
    }
    else if (strncmp(ligne, "CHALLENGED ", 11) == 0)
    {
-      if (sscanf(ligne, "CHALLENGED %20s", e->adversaire) == 1)
+      if (sscanf(ligne, "CHALLENGED %20s", adv) == 1)
       {
-         printf("%s vous défie !\n", e->adversaire);
+         printf("%s vous défie !\n", adv);
          printf("Tapez ACCEPT ou REFUSE pour accepter ou refuser la partie.\n");
       }
       else
       {
          printf("Erreur lors du parsing de la commande CHALLENGED.\n");
+      }
+   }
+   else if (strncmp(ligne, "REFUSED ", 8) == 0)
+   {
+      if (sscanf(ligne, "REFUSED %20s", adv) == 1)
+      {
+         printf("Défi refusé par %s !\n", adv);
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande REFUSED.\n");
+      }
+   }
+   else if (strncmp(ligne, "CANCELLED ", 10) == 0)
+   {
+      if (sscanf(ligne, "CANCELLED %20s", adv) == 1)
+      {
+         printf("%s a annulé le défi.\n", adv);
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande CANCELLED.\n");
       }
    }
    else if (strncmp(ligne, "MSG ", 4) == 0)
