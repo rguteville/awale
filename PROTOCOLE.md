@@ -88,6 +88,8 @@ Colonne « Priorité » : **1** = cœur du sujet (à faire en premier), **2** = 
 | `BIOCLEAR` | tous sauf `NON_IDENTIFIE` | `OK BIOCLEAR` | — | 2 |
 | `BIO <pseudo>` | tous sauf `NON_IDENTIFIE` | `BIOLINE <pseudo> <ligne>` (une par ligne de bio) puis `BIOEND <pseudo>` | `NOTFOUND` | 2 |
 
+Une bio compte au plus **10 lignes** de **1 à 100 caractères**. Elle est conservée tant que le joueur est connecté.
+
 ### Mode privé et amis
 
 | Commande | États autorisés | Réponse si succès | Erreurs possibles | Prio |

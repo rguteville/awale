@@ -19,7 +19,7 @@ static void init(void)
       exit(EXIT_FAILURE);
    }
 #else
-   signal(SIGPIPE, SIG_IGN);   /* Mac/Linux : écrire à un client parti ne doit pas tuer le serveur */
+   signal(SIGPIPE, SIG_IGN); /* Mac/Linux : écrire à un client parti ne doit pas tuer le serveur */
 #endif
 }
 
@@ -95,7 +95,12 @@ static void app(void)
 
          FD_SET(csock, &rdfs);
 
-         Client client = {csock, "", NON_IDENTIFIE, "", 0, INVALID_SOCKET, -1};
+         Client client = {0};
+         client.sock = csock;
+         client.etat = NON_IDENTIFIE;
+         client.adversaire = INVALID_SOCKET;
+         client.partie = -1;
+
          s->clients[s->nbClients] = client;
          s->nbClients++;
       }
@@ -329,6 +334,26 @@ static void traiterLigne(Serveur *s, int i, char *ligne)
    else if (strcmp(commande, "UNWATCH") == 0)
    {
       cmdUnwatch(s, i);
+   }
+   else if (strcmp(commande, "BIOADD") == 0)
+   {
+      cmdBioAdd(s, i, args);
+   }
+   else if (strcmp(commande, "BIOCLEAR") == 0)
+   {
+      cmdBioClear(s, i);
+   }
+   else if (strcmp(commande, "BIO") == 0)
+   {
+      cmdBio(s, i, args);
+   }
+   else if (strcmp(commande, "MSG") == 0)
+   {
+      cmdMsg(s, i, args);
+   }
+   else if (strcmp(commande, "ALL") == 0)
+   {
+      cmdAll(s, i, args);
    }
    else
    {
@@ -753,6 +778,62 @@ static void cmdUnwatch(Serveur *s, int i)
    {
       envoyer(s->clients[i].sock, "ERR STATE vous n'etes pas observateur");
    }
+}
+
+static void cmdBioAdd(Serveur *s, int i, char *args)
+{
+   int n = strlen(args);
+   if (n == 0)
+   {
+      envoyer(s->clients[i].sock, "ERR SYNTAX ligne de bio vide");
+      return;
+   }
+   if (n > BIO_LIGNE_MAX)
+   {
+      envoyer(s->clients[i].sock, "ERR SYNTAX ligne de bio trop longue (100 max)");
+      return;
+   }
+   if (s->clients[i].nbLignesBio == BIO_LIGNES_MAX)
+   {
+      envoyer(s->clients[i].sock, "ERR FULL bio pleine (10 lignes)");
+      return;
+   }
+   snprintf(s->clients[i].bio[s->clients[i].nbLignesBio], sizeof(s->clients[i].bio[s->clients[i].nbLignesBio]), "%s", args);
+   s->clients[i].nbLignesBio++;
+   envoyer(s->clients[i].sock, "OK BIOADD");
+}
+
+static void cmdBioClear(Serveur *s, int i)
+{
+   s->clients[i].nbLignesBio = 0;
+   envoyer(s->clients[i].sock, "OK BIOCLEAR");
+}
+
+static void cmdBio(Serveur *s, int i, char *args)
+{
+   int j = (strcmp(args, "") == 0) ? i : trouverParPseudo(s, args);
+   if (j != -1)
+   {
+      for (int k = 0; k < s->clients[j].nbLignesBio; k++)
+      {
+         envoyer(s->clients[i].sock, "BIOLINE %s %s", s->clients[j].name, s->clients[j].bio[k]);
+      }
+      envoyer(s->clients[i].sock, "BIOEND %s", s->clients[j].name);
+   }
+   else
+   {
+      envoyer(s->clients[i].sock, "ERR NOTFOUND pseudo inconnu");
+   }
+}
+
+static void cmdMsg(Serveur *s, int i, char *args)
+{
+
+}
+
+static void cmdAll(Serveur *s, int i, char *args)
+{
+
 }
 
 int main(void)

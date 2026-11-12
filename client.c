@@ -363,6 +363,28 @@ static void traiterMessage(EtatClient *e, char *ligne)
          printf("Erreur lors du parsing de la commande ERR.\n");
       }
    }
+   else if (strncmp(ligne, "BIOLINE ", 8) == 0)
+   {
+      if (sscanf(ligne, "BIOLINE %20s %1023[^\n]", adv, texte) == 2)
+      {
+         printf("%s : %s\n", adv, texte);
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande BIOLINE.\n");
+      }
+   }
+   else if (strncmp(ligne, "BIOEND ", 7) == 0)
+   {
+      if (sscanf(ligne, "BIOEND %20s", adv) == 1)
+      {
+         printf("--- fin de la bio de %s ---\n", adv);
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande BIOEND.\n");
+      }
+   }
    else
    {
       printf("%s\n", ligne);
