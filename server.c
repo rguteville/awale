@@ -828,11 +828,47 @@ static void cmdBio(Serveur *s, int i, char *args)
 
 static void cmdMsg(Serveur *s, int i, char *args)
 {
+   char * texte = strchr(args,' ');
+   if (texte==NULL) 
+   {
+      envoyer(s->clients[i].sock, "ERR SYNTAX usage : MSG <pseudo> <texte>");
+      return; 
+   }
+   *texte = '\0';
+   texte++;
+   if (texte[0]=='\0')
+   {
+      envoyer(s->clients[i].sock, "ERR SYNTAX message vide");
+      return;
+   }
+   int j=trouverParPseudo(s,args);
+   if (j==-1){
+      envoyer(s->clients[i].sock, "ERR NOTFOUND pseudo inconnu");
+      return;
 
+   }
+   envoyer(s->clients[j].sock, "MSG %s %s", s->clients[i].name, texte);
+   envoyer(s->clients[i].sock, "OK MSG");
 }
 
 static void cmdAll(Serveur *s, int i, char *args)
 {
+   if (args[0]=='\0') 
+   {
+      envoyer(s->clients[i].sock, "ERR SYNTAX message vide");
+      return;
+   } 
+   for (int j=0; j< s->nbClients;j++)
+   {
+      if (j!=i && s->clients[j].etat!= NON_IDENTIFIE) 
+      {
+         envoyer(s->clients[j].sock, "ALL %s %s", s->clients[i].name, args);
+
+      }
+
+   }
+
+   envoyer(s->clients[i].sock, "OK ALL");
 
 }
 
