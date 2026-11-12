@@ -43,6 +43,7 @@ static void app(const char *address, const char *name)
    snprintf(etatClient.monPseudo, sizeof etatClient.monPseudo, "%s", name);
    strcpy(etatClient.adversaire, "");
    etatClient.monCamp = -1;
+   etatClient.partieObservee = 0;
 
    while (1)
    {
@@ -208,13 +209,19 @@ static void traiterMessage(EtatClient *e, char *ligne)
       printf("1 2 3 4 5 6\n");
       plateauEnTexte(&jeu, texte, sizeof texte);
       printf("%s", texte);
-      if (jeu.joueurCourant == e->monCamp)
+      if (e->partieObservee != 0)
+      {
+         /* observateur : ni "vous" ni "adversaire", on désigne les camps */
+         printf("Au tour du camp %d (%s).\n", jeu.joueurCourant,
+                jeu.joueurCourant == 0 ? "rangée du bas" : "rangée du haut");
+      }
+      else if (jeu.joueurCourant == e->monCamp)
       {
          printf("A vous de jouer : PLAY <1-6>\n");
       }
       else
       {
-         printf("C'est au tour de l'adversaire.\n");
+         printf("C'est au tour de %s.\n", e->adversaire);
       }
    }
    else if (strncmp(ligne, "END ", 4) == 0)
@@ -225,6 +232,11 @@ static void traiterMessage(EtatClient *e, char *ligne)
          {
             printf("Partie %d terminée : match nul (%s).\n", id, raison);
          }
+         else if (e->partieObservee != 0)
+         {
+            /* observateur : il n'a ni gagné ni perdu */
+            printf("Partie %d terminée : victoire de %s (%s).\n", id, gagnant, raison);
+         }
          else if (strcmp(gagnant, e->monPseudo) == 0)
          {
             printf("Partie %d terminée : vous avez gagné (%s) !\n", id, raison);
@@ -234,11 +246,54 @@ static void traiterMessage(EtatClient *e, char *ligne)
             printf("Partie %d terminée : vous avez perdu (%s).\n", id, raison);
          }
          e->monCamp = -1;
+         e->partieObservee = 0;   /* le serveur nous a remis LIBRE */
       }
       else
       {
          printf("Erreur lors du parsing de la commande END.\n");
       }
+   }
+   else if (strncmp(ligne, "OK WATCH ", 9) == 0)
+   {
+      if (sscanf(ligne, "OK WATCH %d", &id) == 1)
+      {
+         e->partieObservee = id;
+         printf("Vous observez la partie %d. Tapez UNWATCH pour arrêter.\n", id);
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande OK WATCH.\n");
+      }
+   }
+   else if (strcmp(ligne, "OK UNWATCH") == 0)
+   {
+      printf("Vous n'observez plus la partie %d.\n", e->partieObservee);
+      e->partieObservee = 0;
+   }
+   else if (strcmp(ligne, "GAMES") == 0)
+   {
+      printf("Aucune partie en cours.\n");
+   }
+   else if (strncmp(ligne, "GAMES ", 6) == 0)
+   {
+      /* "GAMES 1:alice:bob 2:carol:dave" : un mot par partie, champs séparés par ':' */
+      printf("Parties en cours :\n");
+      char *p = strtok(ligne + 6, " ");
+      while (p != NULL)
+      {
+         char j0[21], j1[21];
+         /* %20[^:] : jusqu'à 20 caractères qui ne sont pas ':' */
+         if (sscanf(p, "%d:%20[^:]:%20s", &id, j0, j1) == 3)
+         {
+            printf("  partie %d : %s (camp 0) contre %s (camp 1)\n", id, j0, j1);
+         }
+         else
+         {
+            printf("  %s\n", p);
+         }
+         p = strtok(NULL, " ");
+      }
+      printf("Tapez WATCH <numero> pour observer une partie.\n");
    }
    else if (strncmp(ligne, "CHALLENGED ", 11) == 0)
    {

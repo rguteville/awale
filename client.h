@@ -39,7 +39,8 @@ typedef struct
 {
    char monPseudo[21];
    char adversaire[21];
-   int monCamp;          
+   int monCamp;
+   int partieObservee;   /* id de la partie observée (WATCH), 0 si on n'observe rien */
 } EtatClient;
 
 static void init(void);
