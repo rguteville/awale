@@ -399,6 +399,8 @@ static void cmdLogin(Serveur *s, int i, char *args)
       }
    }
    strcpy(s->clients[i].name, args);
+   /* bio sauvegardée lors d'une connexion précédente (0 ligne si aucun fichier) */
+   s->clients[i].nbLignesBio = chargerBio(s->clients[i].name, s->clients[i].bio, BIO_LIGNES_MAX);
    s->clients[i].etat = LIBRE;
    envoyer(s->clients[i].sock, "OK LOGIN %s", s->clients[i].name);
 }
@@ -828,12 +830,14 @@ static void cmdBioAdd(Serveur *s, int i, char *args)
    }
    snprintf(s->clients[i].bio[s->clients[i].nbLignesBio], sizeof(s->clients[i].bio[s->clients[i].nbLignesBio]), "%s", args);
    s->clients[i].nbLignesBio++;
+   sauverBio(s->clients[i].name, s->clients[i].bio, s->clients[i].nbLignesBio);
    envoyer(s->clients[i].sock, "OK BIOADD");
 }
 
 static void cmdBioClear(Serveur *s, int i)
 {
    s->clients[i].nbLignesBio = 0;
+   sauverBio(s->clients[i].name, s->clients[i].bio, 0); /* fichier vidé */
    envoyer(s->clients[i].sock, "OK BIOCLEAR");
 }
 

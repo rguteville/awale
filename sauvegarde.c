@@ -134,3 +134,50 @@ int listerParties(const char *pseudo, PartieSauvee *res, int max)
    fclose(f);
    return n;
 }
+
+static void nomFichierBio(const char *pseudo, char *nom, size_t taille)
+{
+   snprintf(nom, taille, "bio_%s.txt", pseudo);
+}
+
+void sauverBio(const char *pseudo, char bio[][BIO_LIGNE_MAX + 1], int nbLignes)
+{
+   char nom[64];
+   nomFichierBio(pseudo, nom, sizeof nom);
+   FILE *f = fopen(nom, "w");
+   if (f == NULL)
+   {
+      perror(nom);
+      return;
+   }
+   for (int k = 0; k < nbLignes; k++)
+   {
+      fprintf(f, "%s\n", bio[k]);
+   }
+   fclose(f);
+}
+
+int chargerBio(const char *pseudo, char bio[][BIO_LIGNE_MAX + 1], int max)
+{
+   char nom[64];
+   nomFichierBio(pseudo, nom, sizeof nom);
+   FILE *f = fopen(nom, "r");
+   if (f == NULL)
+   {
+      return 0;
+   }
+   int n = 0;
+   char ligne[256];
+   while (n < max && fgets(ligne, sizeof ligne, f) != NULL)
+   {
+      ligne[strcspn(ligne, "\n")] = '\0';
+      if (ligne[0] == '\0')
+      {
+         continue;
+      }
+      snprintf(bio[n], BIO_LIGNE_MAX + 1, "%s", ligne);
+      n++;
+   }
+   fclose(f);
+   return n;
+}
