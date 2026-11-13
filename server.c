@@ -396,6 +396,7 @@ static void traiterLigne(Serveur *s, int i, char *ligne)
    else if (strcmp(commande, "FRIENDS") == 0)
    {
       cmdFriends(s, i);
+   }
    else if (strcmp(commande, "HISTORY") == 0)
    {
       cmdHistory(s, i, args);

@@ -569,6 +569,7 @@ static void traiterMessage(EtatClient *e, char *ligne)
    else if (strncmp(ligne, "FRIENDS ", 8) == 0)
    {
       printf("Vos amis (ils peuvent observer vos parties privées) :%s\n", ligne + 7);
+   }
    else if (strcmp(ligne, "HISTORY") == 0)
    {
       printf("Aucune partie terminée.\n");
