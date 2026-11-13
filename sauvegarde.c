@@ -59,7 +59,28 @@ int lireDernierId()
    return max;
 }
 
-int  chercherPartie(int id, PartieSauvee *p)
+static int analyserLigne(char *ligne, PartieSauvee *p)
+{
+   int pos;
+   if (sscanf(ligne, "%d %20s %20s %20s %15s %d %d%n", &p->id, p->joueurs[0], p->joueurs[1], p->gagnant, p->raison, &p->privee, &p->nbCoups, &pos) != 7 || p->nbCoups < 0 || p->nbCoups > NB_COUPS_MAX)
+   {
+      return 0;
+   }
+   char *mot = strtok(ligne + pos, " \n");
+   for (int k = 0; k < p->nbCoups; k++)
+   {
+      if (mot == NULL)
+      {
+         return 0;
+      }
+      p->coups[k] = atoi(mot);
+      mot = strtok(NULL, " \n");
+   }
+
+   return 1;
+}
+
+int chercherPartie(int id, PartieSauvee *p)
 {
    FILE *f = fopen(FICHIER_PARTIES, "r");
    if (f == NULL)
@@ -69,31 +90,47 @@ int  chercherPartie(int id, PartieSauvee *p)
    char ligne[1024];
    while (fgets(ligne, sizeof ligne, f) != NULL)
    {
-      int lu;
-      if (sscanf(ligne, "%d", &lu) != 1 || lu != id )
-      {
-         continue;
-      }
-      int pos;
-      if (sscanf(ligne, "%d %20s %20s %20s %15s %d %d%n", &p->id, p->joueurs[0], p->joueurs[1], p->gagnant, p->raison, &p->privee, &p->nbCoups, &pos) != 7 || p->nbCoups < 0 || p->nbCoups > NB_COUPS_MAX)
+      if (analyserLigne(ligne, p) && p->id == id)
       {
          fclose(f);
-         return 0;
+         return 1;
       }
-      char * mot = strtok(ligne + pos, " \n");
-      for (int k = 0; k < p->nbCoups; k++)
-      {
-         if (mot == NULL)
-         {
-            fclose(f);
-            return 0;
-         }
-         p->coups[k] = atoi(mot);
-         mot = strtok(NULL, " \n");
-      }
-      fclose(f);
-      return 1;
    }
    fclose(f);
    return 0;
+}
+
+int listerParties(const char *pseudo, PartieSauvee *res, int max)
+{
+   FILE *f = fopen(FICHIER_PARTIES, "r");
+   if (f == NULL)
+   {
+      return 0;
+   }
+   char ligne[1024];
+   int n = 0;
+   PartieSauvee p;
+   while (fgets(ligne, sizeof ligne, f))
+   {
+      if (analyserLigne(ligne, &p) == 0)
+      {
+         continue;
+      }
+      if (strcmp(p.joueurs[0], pseudo) != 0 && strcmp(p.joueurs[1], pseudo) != 0)
+      {
+         continue;
+      }
+      if (n == max)
+      {
+         for (int k = 1; k < max; k++)
+         {
+            res[k - 1] = res[k];
+         }
+         n = max - 1;
+      }
+      res[n] = p;
+      n++;
+   }
+   fclose(f);
+   return n;
 }

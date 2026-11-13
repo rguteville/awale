@@ -39,6 +39,7 @@ typedef struct in_addr IN_ADDR;
 #define MAX_CLIENTS 100
 
 #define BUF_SIZE 1024
+#define HISTORIQUE_MAX 10
 
 #define MAX_PARTIES 50
 #define MAX_OBSERVATEURS 10
@@ -122,6 +123,8 @@ static void cmdBioAdd(Serveur *s, int i, char *args);
 static void cmdMsg(Serveur *s, int i, char *args);
 static void cmdAll(Serveur *s, int i, char *args);
 static void cmdReplay(Serveur *s, int i, char *args);
+static void cmdHistory(Serveur *s, int i, char *args);
+
 
 
 #endif /* guard */

@@ -421,6 +421,36 @@ static void traiterMessage(EtatClient *e, char *ligne)
          printf("Erreur lors du parsing de la commande OK REPLAY.\n");
       }
    }
+   else if (strcmp(ligne, "HISTORY") == 0)
+   {
+      printf("Aucune partie terminée.\n");
+   }
+   else if (strncmp(ligne, "HISTORY ", 8) == 0)
+   {
+      char *mot = strtok(ligne + 8, " ");
+      while (mot != NULL)
+      {
+         char j0[21], j1[21];
+         /* %20[^:] : jusqu'à 20 caractères qui ne sont pas ':' */
+         if (sscanf(mot, "%d:%20[^:]:%20[^:]:%20s", &id, j0, j1, gagnant) == 4)
+         {
+            if (strcmp(gagnant, "NUL") == 0)
+            {
+               printf("partie %d : %s contre %s -> match nul\n", id, j0, j1);
+            }
+            else
+            {
+               printf("partie %d : %s contre %s -> victoire de %s\n", id, j0, j1, gagnant);
+            }
+         }
+         else
+         {
+            printf(" %s\n", mot);
+         }
+         mot = strtok(NULL, " ");
+      }
+      printf("Tapez REPLAY <numero> pour revoir une partie.\n");
+   }
    else
    {
       printf("%s\n", ligne);

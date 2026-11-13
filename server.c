@@ -359,6 +359,10 @@ static void traiterLigne(Serveur *s, int i, char *ligne)
    {
       cmdReplay(s, i, args);
    }
+   else if (strcmp(commande, "HISTORY") == 0)
+   {
+      cmdHistory(s, i, args);
+   }
    else
    {
       envoyer(s->clients[i].sock, "ERR UNKNOWN commande inconnue");
@@ -934,6 +938,21 @@ static void cmdReplay(Serveur *s, int i, char *args)
    }
    envoyer(s->clients[i].sock, "END %d %s %s", id, partieSauvee.gagnant, partieSauvee.raison);
 }
+
+static void cmdHistory(Serveur *s, int i, char *args)
+{
+   const char *pseudo = (args[0] == '\0') ? s->clients[i].name : args;
+   PartieSauvee res[HISTORIQUE_MAX];
+   int n = listerParties(pseudo, res, HISTORIQUE_MAX);
+   char ligne[BUF_SIZE];
+   int pos = snprintf(ligne, sizeof ligne, "HISTORY");
+   for (int k = 0; k < n; k++)
+   {
+      pos += snprintf(ligne + pos, sizeof ligne - pos, " %d:%s:%s:%s", res[k].id, res[k].joueurs[0], res[k].joueurs[1], res[k].gagnant);
+   }
+   envoyer(s->clients[i].sock, "%s", ligne);
+}
+
 
 
 int main(void)
