@@ -374,6 +374,9 @@ static void traiterLigne(Serveur *s, int i, char *ligne)
    else if (strcmp(commande, "FRIENDS") == 0)
    {
       cmdFriends(s, i);
+   else if (strcmp(commande, "HISTORY") == 0)
+   {
+      cmdHistory(s, i, args);
    }
    else
    {
@@ -411,6 +414,8 @@ static void cmdLogin(Serveur *s, int i, char *args)
       }
    }
    strcpy(s->clients[i].name, args);
+   /* bio sauvegardée lors d'une connexion précédente (0 ligne si aucun fichier) */
+   s->clients[i].nbLignesBio = chargerBio(s->clients[i].name, s->clients[i].bio, BIO_LIGNES_MAX);
    s->clients[i].etat = LIBRE;
    envoyer(s->clients[i].sock, "OK LOGIN %s", s->clients[i].name);
 }
@@ -858,12 +863,14 @@ static void cmdBioAdd(Serveur *s, int i, char *args)
    }
    snprintf(s->clients[i].bio[s->clients[i].nbLignesBio], sizeof(s->clients[i].bio[s->clients[i].nbLignesBio]), "%s", args);
    s->clients[i].nbLignesBio++;
+   sauverBio(s->clients[i].name, s->clients[i].bio, s->clients[i].nbLignesBio);
    envoyer(s->clients[i].sock, "OK BIOADD");
 }
 
 static void cmdBioClear(Serveur *s, int i)
 {
    s->clients[i].nbLignesBio = 0;
+   sauverBio(s->clients[i].name, s->clients[i].bio, 0); /* fichier vidé */
    envoyer(s->clients[i].sock, "OK BIOCLEAR");
 }
 
@@ -1067,6 +1074,21 @@ static void cmdFriends(Serveur *s, int i)
    }
    envoyer(s->clients[i].sock, "%s", liste);
 }
+static void cmdHistory(Serveur *s, int i, char *args)
+{
+   const char *pseudo = (args[0] == '\0') ? s->clients[i].name : args;
+   PartieSauvee res[HISTORIQUE_MAX];
+   int n = listerParties(pseudo, res, HISTORIQUE_MAX);
+   char ligne[BUF_SIZE];
+   int pos = snprintf(ligne, sizeof ligne, "HISTORY");
+   for (int k = 0; k < n; k++)
+   {
+      pos += snprintf(ligne + pos, sizeof ligne - pos, " %d:%s:%s:%s", res[k].id, res[k].joueurs[0], res[k].joueurs[1], res[k].gagnant);
+   }
+   envoyer(s->clients[i].sock, "%s", ligne);
+}
+
+
 
 int main(void)
 {

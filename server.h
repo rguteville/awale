@@ -39,6 +39,7 @@ typedef struct in_addr IN_ADDR;
 #define MAX_CLIENTS 100
 
 #define BUF_SIZE 1024
+#define HISTORIQUE_MAX 10
 
 #define MAX_PARTIES 50
 #define MAX_OBSERVATEURS 10
@@ -133,6 +134,7 @@ static void cmdUnfriend(Serveur *s, int i, char *args);
 static void cmdPrivate(Serveur *s, int i, char *args);
 static int estAmi(Serveur *s, int i, const char *pseudo);
 static void cmdFriends(Serveur *s, int i); /* répond "FRIENDS <p1> <p2> ..." */
+static void cmdHistory(Serveur *s, int i, char *args);
 
 
 
