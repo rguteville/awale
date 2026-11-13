@@ -2,11 +2,11 @@
 
 ## 1. Principes
 
-- Transport : **TCP**, port **1977**.
+- Transport : **TCP**, port **1977** par défaut (`./server [port]`, `./client [adresse [pseudo [port]]]`).
 - Messages en **texte ASCII**, **un message par ligne**, chaque ligne se termine par `\n`.
-- Longueur maximale d'une ligne : **1023 caractères** (hors `\n`). Une ligne plus longue est refusée avec `ERR SYNTAX`.
+- Longueur maximale d'une ligne : **1023 caractères** (hors `\n`). Une ligne plus longue est refusée avec `ERR SYNTAX`. Les réponses en liste (`USERS`, `GAMES`...) s'arrêtent avant cette limite, sans couper un élément.
 - Format : `COMMANDE arg1 arg2 ...`
-  - la commande est en **majuscules** ;
+  - la commande s'écrit en **majuscules** (le serveur accepte aussi les minuscules : `play 3`) ;
   - les arguments sont séparés par **un espace** ;
   - le **dernier** argument d'une commande de texte (chat, bio) peut contenir des espaces : c'est tout le reste de la ligne.
 - Pseudo : **1 à 20 caractères**, uniquement lettres, chiffres et `_`. Pas d'espace, ce qui permet de les mettre à la suite sur une ligne.
@@ -33,6 +33,8 @@ LIBRE --WATCH--> OBSERVATEUR --UNWATCH / fin de la partie--> LIBRE
 
 Toute commande envoyée dans un état où elle n'est pas autorisée reçoit `ERR STATE`. L'état du client ne change pas.
 
+Côté serveur, ces états autorisés sont écrits **une seule fois**, dans la table `COMMANDES` de `commandes.c` : c'est elle que lit `traiterLigne` avant d'appeler la fonction de la commande.
+
 ## 3. Commandes client → serveur
 
 Colonne « Priorité » : **1** = cœur du sujet (à faire en premier), **2** = fonctionnalités demandées, **3** = bonus.
@@ -43,7 +45,10 @@ Colonne « Priorité » : **1** = cœur du sujet (à faire en premier), **2** = 
 |---|---|---|---|---|
 | `LOGIN <pseudo>` | `NON_IDENTIFIE` | `OK LOGIN <pseudo>`, suivi de `RESUME ...` et `BOARD ...` si ce pseudo a une partie en pause (voir section 6) | `SYNTAX`, `TAKEN` | 1 |
 | `LIST` | tous sauf `NON_IDENTIFIE` | `USERS <p1> <p2> ...` | — | 1 |
-| `QUIT` | tous | (le serveur ferme la connexion) | — | 1 |
+| `QUIT` | tous | `OK QUIT`, puis le serveur ferme la connexion | — | 1 |
+| `HELP` | tous | `HELPLINE <usage> : <description>` (une par commande autorisée **dans l'état actuel**), puis `HELPEND` | — | 3 |
+
+`QUIT` en pleine partie est un **abandon** (`END ... ABANDON`) : contrairement à une coupure réseau, il n'y a pas de pause.
 
 ### Défis et parties
 
@@ -113,11 +118,21 @@ Une bio compte au plus **10 lignes** de **1 à 100 caractères**. Elle est **sau
 |---|---|---|---|---|
 | `HISTORY [pseudo]` | tous sauf `NON_IDENTIFIE` | `HISTORY <id>:<j0>:<j1>:<gagnant> ...` | — | 2 |
 | `REPLAY <id>` | `LIBRE` | `OK REPLAY <id> <j0> <j1>`, puis un `BOARD` par position, puis `END ...` | `NOTFOUND`, `SYNTAX`, `DENIED` | 2 |
+| `RANK [pseudo]` | tous sauf `NON_IDENTIFIE` | `RANKING <rang>:<pseudo>:<elo>:<victoires>:<nuls>:<defaites> ...` | — | 3 |
 
 - `HISTORY` liste les **10 parties terminées les plus récentes** du joueur (ou de `<pseudo>` s'il est donné), de la plus ancienne à la plus récente. Aucune partie : `HISTORY` seul.
 - `REPLAY` rejoue la partie avec le moteur : un `BOARD` pour la position de départ, puis un après chaque coup, puis le `END` d'origine. Tout est envoyé d'un coup ; c'est au client de le présenter.
 - Toutes les fins de partie sont sauvegardées, abandons et déconnexions compris. Les numéros de partie restent **uniques même après un redémarrage** du serveur.
 - Les parties sauvegardées publiques sont consultables par tous. Une partie **privée** (`privee` = 1 dans `parties.txt`) ne peut être revue que par **ses deux joueurs** et par les amis **connectés** de l'un d'eux ; les autres reçoivent `ERR DENIED`. Les listes d'amis n'étant pas sauvegardées, si les deux joueurs sont déconnectés, seuls eux-mêmes peuvent revoir la partie.
+
+### Classement Elo
+
+- Chaque joueur commence à **1200**. À chaque fin de partie (abandons et déconnexions compris), les deux joueurs sont mis à jour avec la formule d'Elo, K = 32 :
+  - score attendu de A contre B : `E = 1 / (1 + 10^((eloB - eloA) / 400))` ;
+  - nouvel Elo : `eloA + K × (S − E)`, avec `S` = 1 (victoire), 0,5 (nul) ou 0 (défaite), arrondi à l'entier.
+- Juste après `END`, chaque joueur présent reçoit `ELO <ancien> <nouveau>`.
+- `RANK` liste les **10 meilleurs** (Elo décroissant, puis nombre de victoires). `RANK <pseudo>` ne renvoie que la ligne de ce joueur, avec son rang. Joueur jamais classé : `RANKING` seul.
+- Le classement est sauvegardé dans `classement.txt` : `<pseudo> <elo> <victoires> <nuls> <defaites>`, une ligne par joueur.
 
 ## 4. Messages serveur → client
 
@@ -138,13 +153,16 @@ Il y a deux sortes de messages :
 | `START <id> <adversaire> <votre_camp>` | événement | La partie commence ; `<votre_camp>` vaut `0` ou `1` |
 | `BOARD <id> <c0> ... <c11> <score0> <score1> <joueur_courant>` | événement | État du plateau, envoyé après chaque coup |
 | `END <id> <gagnant> <raison>` | événement | Fin de partie ; `<gagnant>` est un pseudo ou `NUL` |
+| `ELO <ancien> <nouveau>` | après `END` | Votre Elo avant et après la partie (joueurs seulement) |
+| `RANKING ...` | réponse à `RANK` | Classement (voir « Classement Elo ») |
+| `HELPLINE <texte>` / `HELPEND` | réponse à `HELP` | Une commande disponible / fin de la liste |
 | `PAUSE <id> <pseudo> <secondes>` | événement | `<pseudo>` s'est déconnecté : la partie est en pause, il a `<secondes>` pour revenir |
 | `RESUMED <id> <pseudo>` | événement | `<pseudo>` est revenu dans la partie |
 | `RESUME <id> <adversaire> <votre_camp>` | après `OK LOGIN` | Vous êtes remis dans votre partie en pause (mêmes champs que `START`), suivi d'un `BOARD` |
 | `MSG <de> <texte>` | événement | Message privé reçu |
 | `ALL <de> <texte>` | événement | Message à tous |
 | `BIOLINE <pseudo> <ligne>` / `BIOEND <pseudo>` | réponse à `BIO` | Une ligne de bio / fin de la bio |
-| `INFO <texte>` | événement | Information du serveur (« bob s'est connecté »...) |
+| `INFO <texte>` | événement | Information du serveur : `INFO <pseudo> s'est connecte`, `INFO <pseudo> s'est deconnecte`... |
 
 **Le plateau.** `BOARD` tient sur **une seule ligne** : les 12 cases dans l'ordre absolu 0 à 11, puis les deux scores, puis le joueur dont c'est le tour. C'est le **client** qui le met en forme pour l'affichage.
 
@@ -160,7 +178,7 @@ Il y a deux sortes de messages :
 | `TAKEN` | Pseudo déjà utilisé |
 | `NOTFOUND` | Pseudo ou partie inconnu |
 | `BUSY` | Le joueur défié n'est pas `LIBRE` |
-| `ILLEGAL` | Coup refusé par les règles |
+| `ILLEGAL` | Coup refusé par les règles : `la case <n> est vide` ou `ce coup laisserait votre adversaire sans graine` |
 | `NOTYOURTURN` | Ce n'est pas votre tour |
 | `PAUSED` | Partie en pause : un joueur est déconnecté |
 | `DENIED` | Partie privée : vous n'êtes pas ami avec les joueurs |
@@ -231,4 +249,5 @@ carol  S: ERR UNKNOWN commande inconnue
 
 - Jeton de reconnexion (envoyé dans `OK LOGIN`, renvoyé par le client), pour que seul le vrai joueur puisse reprendre une partie en pause.
 - `PING` régulier pour détecter plus vite une coupure réseau silencieuse.
-- Classement Elo, tournois.
+- Tournois.
+- Sauvegarder les listes d'amis, comme la bio.
