@@ -532,6 +532,43 @@ static void traiterMessage(EtatClient *e, char *ligne)
          printf("Erreur lors du parsing de la commande OK REPLAY.\n");
       }
    }
+   else if (strncmp(ligne, "OK FRIEND ", 10) == 0)
+   {
+      if (sscanf(ligne, "OK FRIEND %20s", adv) == 1)
+      {
+         printf("%s est dans vos amis : il ou elle pourra observer vos parties privées.\n", adv);
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande OK FRIEND.\n");
+      }
+   }
+   else if (strncmp(ligne, "OK UNFRIEND ", 12) == 0)
+   {
+      if (sscanf(ligne, "OK UNFRIEND %20s", adv) == 1)
+      {
+         printf("%s n'est plus dans vos amis.\n", adv);
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande OK UNFRIEND.\n");
+      }
+   }
+   else if (strcmp(ligne, "OK PRIVATE ON") == 0)
+   {
+      printf("Mode privé activé : seuls vos amis pourront observer vos parties (FRIEND <pseudo> pour en ajouter).\n");
+   }
+   else if (strcmp(ligne, "OK PRIVATE OFF") == 0)
+   {
+      printf("Mode public : tout le monde peut observer vos parties.\n");
+   }
+   else if (strcmp(ligne, "FRIENDS") == 0)
+   {
+      printf("Vous n'avez aucun ami pour l'instant. Tapez FRIEND <pseudo> pour en ajouter.\n");
+   }
+   else if (strncmp(ligne, "FRIENDS ", 8) == 0)
+   {
+      printf("Vos amis (ils peuvent observer vos parties privées) :%s\n", ligne + 7);
    else if (strcmp(ligne, "HISTORY") == 0)
    {
       printf("Aucune partie terminée.\n");
