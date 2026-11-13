@@ -42,6 +42,7 @@ typedef struct in_addr IN_ADDR;
 
 #define MAX_PARTIES 50
 #define MAX_OBSERVATEURS 10
+#define MAX_AMIS 20
 
 enum Etat
 {
@@ -63,6 +64,11 @@ typedef struct
    int partie; /* indice de la partie en cours, ou -1 si pas en partie */
    char bio[BIO_LIGNES_MAX][BIO_LIGNE_MAX + 1];
    int nbLignesBio;
+   char amis[MAX_AMIS][PSEUDO_MAX + 1];
+   int nbAmis;   
+   int prive;    
+
+
 } Client;
 
 typedef struct
