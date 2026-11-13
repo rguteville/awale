@@ -367,6 +367,10 @@ static void traiterLigne(Serveur *s, int i, char *ligne)
    {
       cmdUnfriend(s, i, args);
    }
+   else if (strcmp(commande,"PRIVATE") == 0)
+   {
+      cmdPrivate(s, i, args);
+   }
    else
    {
       envoyer(s->clients[i].sock, "ERR UNKNOWN commande inconnue");
@@ -1000,6 +1004,29 @@ static void cmdUnfriend(Serveur *s, int i, char *args)
       }
    }
    envoyer(s->clients[i].sock, "ERR NOTFOUND %s n'est pas dans votre liste d'amis", args);
+}
+
+static void cmdPrivate(Serveur *s, int i, char *args)
+{
+   if (args[0] == '\0')
+   {
+      envoyer(s->clients[i].sock, "ERR SYNTAX usage : PRIVATE OFF|ON");
+      return;
+   }
+   if (strcmp(args, "OFF") == 0)
+   {
+      s->clients[i].prive = 0;
+      envoyer(s->clients[i].sock, "OK PRIVATE OFF");
+   }
+   else if (strcmp(args, "ON") == 0)
+   {
+      s->clients[i].prive = 1;
+      envoyer(s->clients[i].sock, "OK PRIVATE ON");
+   }
+   else
+   {
+      envoyer(s->clients[i].sock, "ERR SYNTAX usage : PRIVATE OFF|ON");
+   }
 }
 
 int main(void)
