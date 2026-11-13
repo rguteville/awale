@@ -102,7 +102,7 @@ Une bio compte au plus **10 lignes** de **1 à 100 caractères**. Elle est **sau
 - L'amitié est **à sens unique** : « C est ami de A » veut dire que **A** a tapé `FRIEND C`. C n'a rien à faire.
 - `FRIEND` n'accepte qu'un joueur **connecté**, mais la liste retient des **pseudos** : C reste ami de A même s'il se déconnecte puis revient.
 - `FRIEND` d'un joueur déjà dans la liste répond quand même `OK FRIEND`. Au plus **20 amis**.
-- Une partie est **privée** si **au moins un** des deux joueurs est en `PRIVATE ON` au moment du `WATCH`. Seuls les amis **d'au moins un des deux joueurs** peuvent alors l'observer ; les autres reçoivent `ERR DENIED`.
+- Une partie est **privée** si **au moins un** des deux joueurs était en `PRIVATE ON` au début de la partie (`ACCEPT`) **ou** l'est au moment du `WATCH`. Seuls les amis **d'au moins un des deux joueurs** peuvent alors l'observer ; les autres reçoivent `ERR DENIED`. Pendant une pause, le joueur absent n'a plus de liste d'amis : seuls les amis du joueur présent peuvent entrer.
 - Passer en `PRIVATE ON` en cours de partie n'expulse pas les observateurs déjà présents.
 - La liste d'amis et le mode privé sont perdus à la déconnexion.
 - `FRIENDS` affiche **sa propre** liste d'amis (connectés ou non), dans l'ordre de la liste. Liste vide : `FRIENDS` seul. On ne peut pas voir la liste d'un autre joueur.
@@ -112,12 +112,12 @@ Une bio compte au plus **10 lignes** de **1 à 100 caractères**. Elle est **sau
 | Commande | États autorisés | Réponse si succès | Erreurs possibles | Prio |
 |---|---|---|---|---|
 | `HISTORY [pseudo]` | tous sauf `NON_IDENTIFIE` | `HISTORY <id>:<j0>:<j1>:<gagnant> ...` | — | 2 |
-| `REPLAY <id>` | `LIBRE` | `OK REPLAY <id> <j0> <j1>`, puis un `BOARD` par position, puis `END ...` | `NOTFOUND`, `SYNTAX` | 2 |
+| `REPLAY <id>` | `LIBRE` | `OK REPLAY <id> <j0> <j1>`, puis un `BOARD` par position, puis `END ...` | `NOTFOUND`, `SYNTAX`, `DENIED` | 2 |
 
 - `HISTORY` liste les **10 parties terminées les plus récentes** du joueur (ou de `<pseudo>` s'il est donné), de la plus ancienne à la plus récente. Aucune partie : `HISTORY` seul.
 - `REPLAY` rejoue la partie avec le moteur : un `BOARD` pour la position de départ, puis un après chaque coup, puis le `END` d'origine. Tout est envoyé d'un coup ; c'est au client de le présenter.
 - Toutes les fins de partie sont sauvegardées, abandons et déconnexions compris. Les numéros de partie restent **uniques même après un redémarrage** du serveur.
-- Les parties sauvegardées sont consultables par tous les joueurs (le mode privé limitera `REPLAY` comme `WATCH`).
+- Les parties sauvegardées publiques sont consultables par tous. Une partie **privée** (`privee` = 1 dans `parties.txt`) ne peut être revue que par **ses deux joueurs** et par les amis **connectés** de l'un d'eux ; les autres reçoivent `ERR DENIED`. Les listes d'amis n'étant pas sauvegardées, si les deux joueurs sont déconnectés, seuls eux-mêmes peuvent revoir la partie.
 
 ## 4. Messages serveur → client
 

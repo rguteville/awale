@@ -118,7 +118,7 @@ static void cmdChallenge(Serveur *s, int i, char *args);
 static void cmdRefuse(Serveur *s, int i);
 static void cmdAccept(Serveur *s, int i);
 static void formaterPlateau(int id, const struct Jeu *jeu, char *ligne, size_t taille); /* écrit "BOARD ..." dans ligne, n'envoie rien */
-static void envoyerPlateau(Serveur *s, Partie *partie);
+static void envoyerPlateau(Partie *partie);
 static void cmdPlay(Serveur *s, int i, char *args);
 static void terminerPartie(Serveur *s, Partie *partie, const char *gagnant, const char *raison);
 static void cmdForfeit(Serveur *s, int i);

@@ -595,7 +595,7 @@ static void cmdAccept(Serveur *s, int i)
 
    envoyer(s->clients[i].sock, "START %d %s %d", partie->id, s->clients[j].name, campDeI);
    envoyer(s->clients[j].sock, "START %d %s %d", partie->id, s->clients[i].name, 1 - campDeI);
-   envoyerPlateau(s, partie);
+   envoyerPlateau(partie);
 }
 
 static void formaterPlateau(int id, const struct Jeu *jeu, char *ligne, size_t taille)
@@ -608,7 +608,7 @@ static void formaterPlateau(int id, const struct Jeu *jeu, char *ligne, size_t t
    snprintf(ligne + pos, taille - pos, " %d %d %d", jeu->score[0], jeu->score[1], jeu->joueurCourant);
 }
 
-static void envoyerPlateau(Serveur *s, Partie *partie)
+static void envoyerPlateau(Partie *partie)
 {
    char ligne[BUF_SIZE];
    formaterPlateau(partie->id, &partie->jeu, ligne, sizeof ligne);
@@ -655,7 +655,7 @@ static void cmdPlay(Serveur *s, int i, char *args)
    }
    partie->historique.coups[partie->historique.nbCoups] = numCaseCliquee;
    partie->historique.nbCoups++;
-   envoyerPlateau(s, partie);
+   envoyerPlateau(partie);
    if (partie->jeu.fini)
    {
       const char *raison;
@@ -937,17 +937,26 @@ static void cmdWatch(Serveur *s, int i, char *args)
    }
    Partie *partie = &s->parties[k];
 
-   /* partie privée : seuls les amis d'au moins un des deux joueurs peuvent observer */
-   int j0 = trouverParSocket(s, partie->joueurs[0]);
-   int j1 = trouverParSocket(s, partie->joueurs[1]);
-   if (j0 == -1 || j1 == -1)
+   /* partie privée : seuls les amis d'au moins un des deux joueurs peuvent observer.
+      privee est fixé à l'ACCEPT : un joueur privé qui se déconnecte (pause) reste protégé */
+   int partiePrivee = partie->historique.privee;
+   int autorise = 0;
+   for (int camp = 0; camp < 2; camp++)
    {
-      envoyer(s->clients[i].sock, "ERR NOTFOUND joueurs de la partie %d introuvables", idPartie);
-      return;
+      int j = trouverParSocket(s, partie->joueurs[camp]);
+      if (j == -1)
+      {
+         continue; /* joueur absent (partie en pause) : sa liste d'amis est perdue de toute façon */
+      }
+      if (s->clients[j].prive)
+      {
+         partiePrivee = 1; /* passé en PRIVATE ON pendant la partie */
+      }
+      if (estAmi(s, j, s->clients[i].name))
+      {
+         autorise = 1;
+      }
    }
-   int partiePrivee = s->clients[j0].prive || s->clients[j1].prive;
-   
-   int autorise = estAmi(s, j0, s->clients[i].name) || estAmi(s, j1, s->clients[i].name);
    if (partiePrivee && !autorise)
    {
       envoyer(s->clients[i].sock, "ERR DENIED partie %d privee : seuls les amis des joueurs peuvent l'observer", idPartie);
@@ -1096,7 +1105,26 @@ static void cmdReplay(Serveur *s, int i, char *args)
       envoyer(s->clients[i].sock, "ERR NOTFOUND partie inconnue");
       return;
    }
-   // (TODO si ps.privee et pas ami → ERR DENIED)
+   if (partieSauvee.privee)
+   {
+      /* un joueur revoit toujours SA partie ; sinon il faut être ami d'un des deux joueurs.
+         La partie est finie : on cherche les joueurs par PSEUDO (ils n'ont plus de socket de partie) */
+      int autorise = strcmp(s->clients[i].name, partieSauvee.joueurs[0]) == 0 ||
+                     strcmp(s->clients[i].name, partieSauvee.joueurs[1]) == 0;
+      for (int camp = 0; camp < 2; camp++)
+      {
+         int j = trouverParPseudo(s, partieSauvee.joueurs[camp]);
+         if (j != -1 && estAmi(s, j, s->clients[i].name))
+         {
+            autorise = 1;
+         }
+      }
+      if (!autorise)
+      {
+         envoyer(s->clients[i].sock, "ERR DENIED partie %d privee : seuls les joueurs et leurs amis peuvent la revoir", id);
+         return;
+      }
+   }
    envoyer(s->clients[i].sock, "OK REPLAY %d %s %s", id, partieSauvee.joueurs[0], partieSauvee.joueurs[1]);
    struct Jeu jeu;
    initJeu(&jeu, 0);
