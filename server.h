@@ -131,6 +131,8 @@ static void cmdReplay(Serveur *s, int i, char *args);
 static void cmdFriend(Serveur *s, int i, char *args);
 static void cmdUnfriend(Serveur *s, int i, char *args);
 static void cmdPrivate(Serveur *s, int i, char *args);
+static int estAmi(Serveur *s, int i, const char *pseudo); 
+
 
 
 #endif /* guard */
