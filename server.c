@@ -359,6 +359,21 @@ static void traiterLigne(Serveur *s, int i, char *ligne)
    {
       cmdReplay(s, i, args);
    }
+   else if (strcmp(commande, "FRIEND") == 0)
+   {
+      cmdFriend(s, i, args);
+   }
+   else if (strcmp(commande, "UNFRIEND") == 0)
+   {
+      cmdUnfriend(s, i, args);
+   }
+   else if (strcmp(commande,"PRIVATE") == 0)
+   {
+      cmdPrivate(s, i, args);
+   }
+   else if (strcmp(commande, "FRIENDS") == 0)
+   {
+      cmdFriends(s, i);
    else if (strcmp(commande, "HISTORY") == 0)
    {
       cmdHistory(s, i, args);
@@ -541,7 +556,7 @@ static void cmdAccept(Serveur *s, int i)
    partie->historique.id = partie->id;
    strcpy(partie->historique.joueurs[campDeI], s->clients[i].name);
    strcpy(partie->historique.joueurs[1 - campDeI], s->clients[j].name);
-   partie->historique.privee = 0;
+   partie->historique.privee = s->clients[i].prive || s->clients[j].prive;
    partie->historique.nbCoups = 0;
 
    initJeu(&partie->jeu, 0);
@@ -781,6 +796,24 @@ static void cmdWatch(Serveur *s, int i, char *args)
       return;
    }
    Partie *partie = &s->parties[k];
+
+   /* partie privée : seuls les amis d'au moins un des deux joueurs peuvent observer */
+   int j0 = trouverParSocket(s, partie->joueurs[0]);
+   int j1 = trouverParSocket(s, partie->joueurs[1]);
+   if (j0 == -1 || j1 == -1)
+   {
+      envoyer(s->clients[i].sock, "ERR NOTFOUND joueurs de la partie %d introuvables", idPartie);
+      return;
+   }
+   int partiePrivee = s->clients[j0].prive || s->clients[j1].prive;
+   
+   int autorise = estAmi(s, j0, s->clients[i].name) || estAmi(s, j1, s->clients[i].name);
+   if (partiePrivee && !autorise)
+   {
+      envoyer(s->clients[i].sock, "ERR DENIED partie %d privee : seuls les amis des joueurs peuvent l'observer", idPartie);
+      return;
+   }
+
    if (partie->nbObservateurs >= MAX_OBSERVATEURS)
    {
       envoyer(s->clients[i].sock, "ERR FULL trop d'observateurs pour la partie %d", idPartie);
@@ -791,7 +824,7 @@ static void cmdWatch(Serveur *s, int i, char *args)
    s->clients[i].etat = OBSERVATEUR;
    s->clients[i].partie = k;
    envoyer(s->clients[i].sock, "OK WATCH %d", idPartie);
-   /* le plateau actuel, au nouvel observateur SEULEMENT (pas de BOARD en double chez les joueurs) */
+   
    char ligne[BUF_SIZE];
    formaterPlateau(partie->id, &partie->jeu, ligne, sizeof ligne);
    envoyer(s->clients[i].sock, "%s", ligne);
@@ -943,6 +976,104 @@ static void cmdReplay(Serveur *s, int i, char *args)
    envoyer(s->clients[i].sock, "END %d %s %s", id, partieSauvee.gagnant, partieSauvee.raison);
 }
 
+static void cmdFriend(Serveur *s, int i, char *args)
+{
+   
+   if (args[0] == '\0' || strcmp(args, s->clients[i].name) == 0)
+   {
+      envoyer(s->clients[i].sock, "ERR SYNTAX usage : FRIEND <pseudo>");
+      return;
+   }
+   int j=trouverParPseudo(s,args);
+   if (j==-1)
+   {
+      envoyer(s->clients[i].sock, "ERR NOTFOUND pseudo inconnu");
+      return;
+   }
+   if (estAmi(s, i, args)) /* déjà dans la liste : OK quand même, sans doublon */
+   {
+      envoyer(s->clients[i].sock, "OK FRIEND %s", args);
+      return;
+   }
+   /* testé APRÈS estAmi : avec 20 amis, refaire FRIEND d'un ami existant doit répondre OK */
+   if (s->clients[i].nbAmis==MAX_AMIS)
+   {
+      envoyer(s->clients[i].sock, "ERR FULL liste d'amis pleine (20 max)");
+      return;
+   }
+   strcpy(s->clients[i].amis[s->clients[i].nbAmis],args);
+   s->clients[i].nbAmis++;
+   envoyer(s->clients[i].sock, "OK FRIEND %s", args);
+}
+
+static void cmdUnfriend(Serveur *s, int i, char *args)
+{
+   if (args[0] == '\0')
+   {
+      envoyer(s->clients[i].sock, "ERR SYNTAX usage : UNFRIEND <pseudo>");
+      return;
+   }
+   /* pas de trouverParPseudo : on doit pouvoir retirer un ami déconnecté */
+   for (int k=0;k<s->clients[i].nbAmis;k++)
+   {
+      if (strcmp(s->clients[i].amis[k],args)==0)
+      {
+         int dernier = s->clients[i].nbAmis - 1;
+         if (k != dernier) 
+         {
+            strcpy(s->clients[i].amis[k], s->clients[i].amis[dernier]);
+         }
+         s->clients[i].nbAmis--;
+         envoyer(s->clients[i].sock, "OK UNFRIEND %s", args);
+         return;
+      }
+   }
+   envoyer(s->clients[i].sock, "ERR NOTFOUND %s n'est pas dans votre liste d'amis", args);
+}
+
+static int estAmi(Serveur *s, int i, const char *pseudo)
+{
+  
+   for (int k=0;k<s->clients[i].nbAmis;k++)
+   {
+      if (strcmp(s->clients[i].amis[k],pseudo)==0)
+      {
+         return 1;
+      }
+   }
+   return 0;
+}
+
+static void cmdPrivate(Serveur *s, int i, char *args)
+{
+
+   if (strcmp(args, "OFF") == 0)
+   {
+      s->clients[i].prive = 0;
+      envoyer(s->clients[i].sock, "OK PRIVATE OFF");
+   }
+   else if (strcmp(args, "ON") == 0)
+   {
+      s->clients[i].prive = 1;
+      envoyer(s->clients[i].sock, "OK PRIVATE ON");
+   }
+   else
+   {
+      envoyer(s->clients[i].sock, "ERR SYNTAX usage : PRIVATE OFF|ON");
+   }
+}
+
+static void cmdFriends(Serveur *s, int i)
+{
+   
+   char liste[BUF_SIZE];
+   int pos = snprintf(liste, sizeof liste, "FRIENDS");
+   for (int k = 0; k < s->clients[i].nbAmis; k++)
+   {
+      pos += snprintf(liste + pos, sizeof liste - pos, " %s", s->clients[i].amis[k]);
+   }
+   envoyer(s->clients[i].sock, "%s", liste);
+}
 static void cmdHistory(Serveur *s, int i, char *args)
 {
    const char *pseudo = (args[0] == '\0') ? s->clients[i].name : args;
