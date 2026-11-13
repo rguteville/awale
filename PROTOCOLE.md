@@ -41,7 +41,7 @@ Colonne « Priorité » : **1** = cœur du sujet (à faire en premier), **2** = 
 
 | Commande | États autorisés | Réponse si succès | Erreurs possibles | Prio |
 |---|---|---|---|---|
-| `LOGIN <pseudo>` | `NON_IDENTIFIE` | `OK LOGIN <pseudo>` | `SYNTAX`, `TAKEN` | 1 |
+| `LOGIN <pseudo>` | `NON_IDENTIFIE` | `OK LOGIN <pseudo>`, suivi de `RESUME ...` et `BOARD ...` si ce pseudo a une partie en pause (voir section 6) | `SYNTAX`, `TAKEN` | 1 |
 | `LIST` | tous sauf `NON_IDENTIFIE` | `USERS <p1> <p2> ...` | — | 1 |
 | `QUIT` | tous | (le serveur ferme la connexion) | — | 1 |
 
@@ -53,7 +53,7 @@ Colonne « Priorité » : **1** = cœur du sujet (à faire en premier), **2** = 
 | `ACCEPT` | `DEFI_RECU` | `START ...` (aux deux joueurs) | — | 1 |
 | `REFUSE` | `DEFI_RECU` | `OK REFUSE` | — | 1 |
 | `CANCEL` | `DEFI_ENVOYE` | `OK CANCEL` | — | 2 |
-| `PLAY <n>` | `EN_PARTIE` | `BOARD ...` (aux joueurs et observateurs) | `SYNTAX`, `ILLEGAL`, `NOTYOURTURN` | 1 |
+| `PLAY <n>` | `EN_PARTIE` | `BOARD ...` (aux joueurs et observateurs) | `SYNTAX`, `ILLEGAL`, `NOTYOURTURN`, `PAUSED` | 1 |
 | `FORFEIT` | `EN_PARTIE` | `END ...` | — | 2 |
 
 `PLAY <n>` : `n` va de **1 à 6** et désigne la n-ième case **du camp du joueur**, comptée **de gauche à droite sur l'affichage** du plateau. L'affichage est le même pour les deux joueurs : rangée du haut = camp 1 (cases 11 à 6), rangée du bas = camp 0 (cases 0 à 5). C'est le **serveur** qui convertit `n` en numéro de case absolu :
@@ -135,6 +135,9 @@ Il y a deux sortes de messages :
 | `START <id> <adversaire> <votre_camp>` | événement | La partie commence ; `<votre_camp>` vaut `0` ou `1` |
 | `BOARD <id> <c0> ... <c11> <score0> <score1> <joueur_courant>` | événement | État du plateau, envoyé après chaque coup |
 | `END <id> <gagnant> <raison>` | événement | Fin de partie ; `<gagnant>` est un pseudo ou `NUL` |
+| `PAUSE <id> <pseudo> <secondes>` | événement | `<pseudo>` s'est déconnecté : la partie est en pause, il a `<secondes>` pour revenir |
+| `RESUMED <id> <pseudo>` | événement | `<pseudo>` est revenu dans la partie |
+| `RESUME <id> <adversaire> <votre_camp>` | après `OK LOGIN` | Vous êtes remis dans votre partie en pause (mêmes champs que `START`), suivi d'un `BOARD` |
 | `MSG <de> <texte>` | événement | Message privé reçu |
 | `ALL <de> <texte>` | événement | Message à tous |
 | `BIOLINE <pseudo> <ligne>` / `BIOEND <pseudo>` | réponse à `BIO` | Une ligne de bio / fin de la bio |
@@ -156,6 +159,7 @@ Il y a deux sortes de messages :
 | `BUSY` | Le joueur défié n'est pas `LIBRE` |
 | `ILLEGAL` | Coup refusé par les règles |
 | `NOTYOURTURN` | Ce n'est pas votre tour |
+| `PAUSED` | Partie en pause : un joueur est déconnecté |
 | `DENIED` | Partie privée : vous n'êtes pas ami avec les joueurs |
 | `FULL` | Plus de place : bio déjà pleine (10 lignes), ou partie avec déjà trop d'observateurs |
 
@@ -163,7 +167,13 @@ Il y a deux sortes de messages :
 
 - Au lancement d'une partie, le serveur **tire au sort** le premier joueur.
 - Le serveur est le **seul arbitre** : il vérifie chaque coup avec le moteur (`coupLegal` / `jouerCoup`) et ne fait jamais confiance au client.
-- **Déconnexion d'un joueur en partie** : la partie s'arrête, l'adversaire gagne, et tous reçoivent `END <id> <adversaire> DECONNEXION`.
+- **Déconnexion d'un joueur en partie** : la partie n'est **pas** perdue tout de suite, elle passe **en pause pendant 30 secondes**.
+  - L'adversaire et les observateurs reçoivent `PAUSE <id> <pseudo> 30`. Pendant la pause, `PLAY` répond `ERR PAUSED`. `FORFEIT` reste possible (l'absent gagne alors).
+  - Si le joueur refait `LOGIN` **avec le même pseudo** avant la fin du délai, il reçoit `RESUME` puis `BOARD`, les autres reçoivent `RESUMED <id> <pseudo>`, et la partie continue là où elle en était. La partie retrouve le joueur par son **pseudo**, car sa socket a changé.
+  - Sinon, au bout de 30 s, l'absent perd : `END <id> <adversaire> DECONNEXION`.
+  - Si les **deux** joueurs sont absents quand le délai expire : **match nul**, `END <id> NUL DECONNEXION`.
+  - Le client se reconnecte **tout seul** si la connexion coupe (15 essais, toutes les 2 s) et renvoie `LOGIN` avec son pseudo. Relancer `./client <adresse> <pseudo>` à la main marche aussi.
+  - Limites : il n'y a pas de mot de passe, donc pendant la pause n'importe qui peut reprendre la partie en tapant `LOGIN` avec le pseudo de l'absent. Une coupure réseau « silencieuse » (Wi-Fi coupé sans fermeture TCP) n'est détectée par le serveur qu'au bout d'un long moment, et pendant ce temps le pseudo reste pris (`ERR TAKEN`).
 - **Déconnexion avec un défi en attente** : le défi est annulé, l'autre joueur reçoit `CANCELLED <pseudo>`.
 - **Sauvegarde** : dans le dossier où le serveur est lancé. `parties.txt` contient une partie terminée par ligne : `<id> <j0> <j1> <gagnant|NUL> <raison> <privee 0|1> <nbCoups> <case> <case> ...`, avec les cases en numérotation **absolue** (0 à 11). `bio_<pseudo>.txt` contient une ligne de bio par ligne.
 
@@ -216,5 +226,6 @@ carol  S: ERR UNKNOWN commande inconnue
 
 ## 8. Améliorations possibles
 
-- Reprise d'une partie après une déconnexion (le joueur se reconnecte avec le même pseudo dans un délai donné).
+- Jeton de reconnexion (envoyé dans `OK LOGIN`, renvoyé par le client), pour que seul le vrai joueur puisse reprendre une partie en pause.
+- `PING` régulier pour détecter plus vite une coupure réseau silencieuse.
 - Classement Elo, tournois.

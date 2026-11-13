@@ -60,10 +60,26 @@ static void app(void)
          FD_SET(s->clients[i].sock, &rdfs);
       }
 
-      if (select(max + 1, &rdfs, NULL, NULL, NULL) == -1)
+      /* select attend au plus 1 seconde : même sans aucun message, le serveur se réveille
+         régulièrement pour vérifier les délais de reconnexion.
+         select MODIFIE la struct timeval : il faut la remettre à 1 s à chaque tour */
+      struct timeval attente;
+      attente.tv_sec = 1;
+      attente.tv_usec = 0;
+
+      int nbPrets = select(max + 1, &rdfs, NULL, NULL, &attente);
+      if (nbPrets == -1)
       {
          perror("select()");
          exit(errno);
+      }
+
+      verifierDelais(s);
+
+      if (nbPrets == 0)
+      {
+         /* délai écoulé, aucune socket prête : rien d'autre à faire ce tour-ci */
+         continue;
       }
 
       /* something from standard input : i.e keyboard */
@@ -163,7 +179,8 @@ static void app(void)
                   }
                   if (s->clients[i].etat == EN_PARTIE)
                   {
-                     abandonnerPartie(s, i, "DECONNEXION");
+                     /* pas de défaite immédiate : la partie attend DELAI_RECONNEXION secondes */
+                     suspendrePartie(s, i);
                   }
                   if (s->clients[i].etat == OBSERVATEUR)
                   {
@@ -259,6 +276,11 @@ static void write_client(SOCKET sock, const char *buffer)
 
 static void envoyer(SOCKET sock, const char *format, ...)
 {
+   /* joueur déconnecté (partie en pause) : il n'y a personne à qui écrire */
+   if (sock == INVALID_SOCKET)
+   {
+      return;
+   }
    char ligne[BUF_SIZE];
    va_list args;
 
@@ -403,6 +425,8 @@ static void cmdLogin(Serveur *s, int i, char *args)
    s->clients[i].nbLignesBio = chargerBio(s->clients[i].name, s->clients[i].bio, BIO_LIGNES_MAX);
    s->clients[i].etat = LIBRE;
    envoyer(s->clients[i].sock, "OK LOGIN %s", s->clients[i].name);
+   /* ce pseudo avait peut-être une partie en pause : on l'y remet */
+   reprendrePartie(s, i);
 }
 
 static void cmdList(Serveur *s, int i)
@@ -537,6 +561,8 @@ static void cmdAccept(Serveur *s, int i)
    partie->id = s->prochainId++;
    partie->joueurs[campDeI] = s->clients[i].sock;
    partie->joueurs[1 - campDeI] = s->clients[j].sock;
+   partie->deconnecteDepuis[0] = 0;
+   partie->deconnecteDepuis[1] = 0;
    partie->nbObservateurs = 0;
    partie->historique.id = partie->id;
    strcpy(partie->historique.joueurs[campDeI], s->clients[i].name);
@@ -594,7 +620,12 @@ static void cmdPlay(Serveur *s, int i, char *args)
       return;
    }
    Partie *partie = &s->parties[s->clients[i].partie];
-   int monCamp = (partie->joueurs[0] == s->clients[i].sock) ? 0 : 1;
+   if (partie->deconnecteDepuis[0] != 0 || partie->deconnecteDepuis[1] != 0)
+   {
+      envoyer(s->clients[i].sock, "ERR PAUSED partie en pause, attendez le retour de votre adversaire");
+      return;
+   }
+   int monCamp = campDuClient(partie, s->clients[i].sock);
    if (partie->jeu.joueurCourant != monCamp)
    {
       envoyer(s->clients[i].sock, "ERR NOTYOURTURN ce n'est pas votre tour");
@@ -624,18 +655,9 @@ static void cmdPlay(Serveur *s, int i, char *args)
       {
          raison = "BLOQUE";
       }
-      const char *pseudoGagnant;
+      /* les pseudos des deux camps sont dans l'historique : pas besoin de chercher les clients */
       int g = gagnant(&partie->jeu);
-      int j;
-      if (g == -1)
-      {
-         j = -1;
-      }
-      else 
-      {
-         trouverParSocket(s, partie->joueurs[g]);
-      }
-      pseudoGagnant = (g == -1 || j == -1) ? "NUL" : s->clients[j].name;
+      const char *pseudoGagnant = (g == -1) ? "NUL" : partie->historique.joueurs[g];
       terminerPartie(s, partie, pseudoGagnant, raison);
    }
 }
@@ -652,10 +674,10 @@ static void cmdForfeit(Serveur *s, int i)
 
 static void abandonnerPartie(Serveur *s, int i, const char *raison)
 {
+   /* le gagnant est l'autre camp, même s'il est déconnecté en ce moment (partie en pause) */
    Partie *partie = &s->parties[s->clients[i].partie];
-   int j = trouverParSocket(s, s->clients[i].adversaire);
-   const char *pseudoGagnant = (j == -1) ? "NUL" : s->clients[j].name;
-   terminerPartie(s, partie, pseudoGagnant, raison);
+   int monCamp = campDuClient(partie, s->clients[i].sock);
+   terminerPartie(s, partie, partie->historique.joueurs[1 - monCamp], raison);
 }
 
 static void cmdCancel(Serveur *s, int i)
@@ -685,6 +707,11 @@ static void terminerPartie(Serveur *s, Partie *partie, const char *gagnant, cons
 {
    for (int k = 0; k < 2; k++)
    {
+      if (partie->joueurs[k] == INVALID_SOCKET)
+      {
+         /* joueur déconnecté : plus de client à prévenir ni à remettre LIBRE */
+         continue;
+      }
       envoyer(partie->joueurs[k], "END %d %s %s", partie->id, gagnant, raison);
       int j = trouverParSocket(s, partie->joueurs[k]);
       if (j != -1)
@@ -716,7 +743,122 @@ static void terminerPartie(Serveur *s, Partie *partie, const char *gagnant, cons
    strcpy(partie->historique.gagnant, gagnant);
    strcpy(partie->historique.raison, raison);
    sauverPartie(&partie->historique);
+   partie->deconnecteDepuis[0] = 0;
+   partie->deconnecteDepuis[1] = 0;
    partie->active = 0;
+}
+
+static int campDuClient(const Partie *partie, SOCKET sock)
+{
+   return (partie->joueurs[0] == sock) ? 0 : 1;
+}
+
+static void prevenirPartie(const Partie *partie, const char *ligne)
+{
+   /* envoyer() ignore INVALID_SOCKET : un joueur déconnecté est simplement sauté */
+   for (int k = 0; k < 2; k++)
+   {
+      envoyer(partie->joueurs[k], "%s", ligne);
+   }
+   for (int k = 0; k < partie->nbObservateurs; k++)
+   {
+      envoyer(partie->observateurs[k], "%s", ligne);
+   }
+}
+
+static void suspendrePartie(Serveur *s, int i)
+{
+   Partie *partie = &s->parties[s->clients[i].partie];
+   int camp = campDuClient(partie, s->clients[i].sock);
+
+   /* la partie ne connaît plus la socket de ce joueur : elle le retrouvera par son PSEUDO
+      (partie->historique.joueurs[camp]) quand il refera LOGIN */
+   partie->joueurs[camp] = INVALID_SOCKET;
+   partie->deconnecteDepuis[camp] = time(NULL);
+
+   s->clients[i].etat = LIBRE;
+   s->clients[i].partie = -1;
+   s->clients[i].adversaire = INVALID_SOCKET;
+
+   char ligne[BUF_SIZE];
+   snprintf(ligne, sizeof ligne, "PAUSE %d %s %d", partie->id, partie->historique.joueurs[camp], DELAI_RECONNEXION);
+   prevenirPartie(partie, ligne);
+}
+
+static void reprendrePartie(Serveur *s, int i)
+{
+   Client *client = &s->clients[i];
+   for (int k = 0; k < MAX_PARTIES; k++)
+   {
+      Partie *partie = &s->parties[k];
+      if (!partie->active)
+      {
+         continue;
+      }
+      for (int camp = 0; camp < 2; camp++)
+      {
+         if (partie->joueurs[camp] != INVALID_SOCKET || strcmp(partie->historique.joueurs[camp], client->name) != 0)
+         {
+            continue;
+         }
+         char ligne[BUF_SIZE];
+
+         /* prévenir les autres AVANT de rattacher la socket : celui qui revient reçoit RESUME à la place */
+         snprintf(ligne, sizeof ligne, "RESUMED %d %s", partie->id, client->name);
+         prevenirPartie(partie, ligne);
+
+         partie->joueurs[camp] = client->sock;
+         partie->deconnecteDepuis[camp] = 0;
+         client->etat = EN_PARTIE;
+         client->partie = k;
+         client->adversaire = partie->joueurs[1 - camp]; /* INVALID_SOCKET si l'autre est absent aussi */
+
+         /* l'adversaire (s'il est là) gardait l'ANCIENNE socket : on la remplace */
+         int j = trouverParSocket(s, partie->joueurs[1 - camp]);
+         if (j != -1)
+         {
+            s->clients[j].adversaire = client->sock;
+         }
+
+         envoyer(client->sock, "RESUME %d %s %d", partie->id, partie->historique.joueurs[1 - camp], camp);
+         formaterPlateau(partie->id, &partie->jeu, ligne, sizeof ligne);
+         envoyer(client->sock, "%s", ligne);
+
+         /* l'adversaire est peut-être lui aussi déconnecté : la pause continue */
+         if (partie->deconnecteDepuis[1 - camp] != 0)
+         {
+            int reste = DELAI_RECONNEXION - (int)difftime(time(NULL), partie->deconnecteDepuis[1 - camp]);
+            envoyer(client->sock, "PAUSE %d %s %d", partie->id, partie->historique.joueurs[1 - camp], reste > 0 ? reste : 0);
+         }
+         return; /* un pseudo est dans au plus une partie */
+      }
+   }
+}
+
+static void verifierDelais(Serveur *s)
+{
+   time_t maintenant = time(NULL);
+   for (int k = 0; k < MAX_PARTIES; k++)
+   {
+      Partie *partie = &s->parties[k];
+      if (!partie->active)
+      {
+         continue;
+      }
+      for (int camp = 0; camp < 2; camp++)
+      {
+         if (partie->deconnecteDepuis[camp] != 0 &&
+             difftime(maintenant, partie->deconnecteDepuis[camp]) >= DELAI_RECONNEXION)
+         {
+            /* l'autre joueur est absent lui aussi : match nul. Sinon il gagne. */
+            const char *pseudoGagnant = (partie->deconnecteDepuis[1 - camp] != 0)
+                                            ? "NUL"
+                                            : partie->historique.joueurs[1 - camp];
+            terminerPartie(s, partie, pseudoGagnant, "DECONNEXION");
+            break; /* la partie est terminée : on ne regarde pas l'autre camp */
+         }
+      }
+   }
 }
 
 static void retirerObservateur(Serveur *s, int i)
@@ -743,12 +885,9 @@ static void cmdGames(Serveur *s, int i)
    {
       if (s->parties[k].active)
       {
-         int j0 = trouverParSocket(s, s->parties[k].joueurs[0]);
-         int j1 = trouverParSocket(s, s->parties[k].joueurs[1]);
-         if (j0 != -1 && j1 != -1)
-         {
-            pos += snprintf(ligne + pos, sizeof ligne - pos, " %d:%s:%s", s->parties[k].id, s->clients[j0].name, s->clients[j1].name);
-         }
+         /* pseudos pris dans l'historique : une partie en pause (joueur absent) est aussi listée */
+         pos += snprintf(ligne + pos, sizeof ligne - pos, " %d:%s:%s", s->parties[k].id,
+                         s->parties[k].historique.joueurs[0], s->parties[k].historique.joueurs[1]);
       }
    }
    envoyer(s->clients[i].sock, "%s", ligne);

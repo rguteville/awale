@@ -36,6 +36,11 @@ typedef struct in_addr IN_ADDR;
 
 #define BUF_SIZE 1024
 
+/* après une coupure : RECONNEXION_ESSAIS tentatives, espacées de RECONNEXION_PAUSE secondes
+   (15 x 2 s = 30 s, le délai pendant lequel le serveur garde la partie en pause) */
+#define RECONNEXION_ESSAIS 15
+#define RECONNEXION_PAUSE  2
+
 typedef struct
 {
    char monPseudo[21];   /* pseudo ACCEPTÉ par le serveur (mis à jour sur OK LOGIN) */
@@ -49,6 +54,8 @@ static void init(void);
 static void end(void);
 static void app(const char *address, const char *name);
 static int init_connection(const char *address);
+static SOCKET tenterConnexion(const char *address, int afficherErreurs); /* INVALID_SOCKET si échec */
+static SOCKET reconnecter(const char *address, EtatClient *e);          /* INVALID_SOCKET si échec */
 static void end_connection(int sock);
 static void write_server(SOCKET sock, const char *buffer);
 static void traiterMessage(EtatClient *e, char *ligne);

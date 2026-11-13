@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdarg.h>
 #include "awale.h"
 
 void initJeu(struct Jeu *jeu, int premierJoueur)
@@ -13,17 +14,76 @@ void initJeu(struct Jeu *jeu, int premierJoueur)
     jeu->nbCoups = 0;
 }
 
+/* Ajoute du texte formaté à la fin du buffer.
+ * Renvoie 0 si tout a été écrit, -1 si le buffer est plein (texte tronqué). */
+static int ajouter(char *buffer, size_t taille, int *offset, const char *format, ...)
+{
+    if (*offset >= (int)taille) {
+        return -1;
+    }
+    va_list args;
+    va_start(args, format);
+    int n = vsnprintf(buffer + *offset, taille - *offset, format, args);
+    va_end(args);
+    if (n < 0) {
+        return -1;
+    }
+    *offset += n;
+    return (*offset >= (int)taille) ? -1 : 0;
+}
+
+/* "        1    2    3    4    5    6" */
+static int ligneNumeros(char *buffer, size_t taille, int *offset)
+{
+    if (ajouter(buffer, taille, offset, "    ") < 0) return -1;
+    for (int k = 1; k <= 6; k++) {
+        if (ajouter(buffer, taille, offset, "%5d", k) < 0) return -1;
+    }
+    return ajouter(buffer, taille, offset, "\n");
+}
+
+/* "     +----+----+----+----+----+----+" */
+static int ligneSeparateur(char *buffer, size_t taille, int *offset)
+{
+    if (ajouter(buffer, taille, offset, "     +") < 0) return -1;
+    for (int k = 0; k < 6; k++) {
+        if (ajouter(buffer, taille, offset, "----+") < 0) return -1;
+    }
+    return ajouter(buffer, taille, offset, "\n");
+}
+
+/* " J1  |  4 |  4 |  4 |  4 |  4 |  4 |"
+ * Parcourt les cases de debut à fin (inclus) avec un pas de +1 ou -1. */
+static int ligneGraines(const struct Jeu *jeu, char *buffer, size_t taille, int *offset,
+                        const char *nom, int debut, int fin)
+{
+    int pas = (debut <= fin) ? 1 : -1;
+    if (ajouter(buffer, taille, offset, " %s  |", nom) < 0) return -1;
+    for (int i = debut; i != fin + pas; i += pas) {
+        if (ajouter(buffer, taille, offset, " %2d |", jeu->plateau[i]) < 0) return -1;
+    }
+    return ajouter(buffer, taille, offset, "\n");
+}
+
 void plateauEnTexte(const struct Jeu *jeu, char *buffer, size_t taille)
 {
     int offset = 0;
-    for (int i = 11; i >= 6; i--) {
-        offset += snprintf(buffer + offset, taille - offset, "%d ", jeu->plateau[i]);
+    if (taille == 0) {
+        return;
     }
-    offset += snprintf(buffer + offset, taille - offset, "\n");
-    for (int i = 0; i < 6; i++) {
-        offset += snprintf(buffer + offset, taille - offset, "%d ", jeu->plateau[i]);
-    }
-    offset += snprintf(buffer + offset, taille - offset, "\nScores : %d - %d\n", jeu->score[0], jeu->score[1]);
+    buffer[0] = '\0';
+
+    /* Rangée du haut = camp 1 (cases 11 -> 6), rangée du bas = camp 0 (cases 0 -> 5).
+     * Les numéros 1..6 correspondent à "PLAY <n>" pour les deux camps. */
+    if (ligneNumeros(buffer, taille, &offset) < 0) return;
+    if (ligneSeparateur(buffer, taille, &offset) < 0) return;
+    if (ligneGraines(jeu, buffer, taille, &offset, "J1", 11, 6) < 0) return;
+    if (ligneSeparateur(buffer, taille, &offset) < 0) return;
+    if (ligneGraines(jeu, buffer, taille, &offset, "J0", 0, 5) < 0) return;
+    if (ligneSeparateur(buffer, taille, &offset) < 0) return;
+    if (ligneNumeros(buffer, taille, &offset) < 0) return;
+    ajouter(buffer, taille, &offset, "   Score  J0 : %d   |   J1 : %d\n",
+            jeu->score[0], jeu->score[1]);
 }
 
 static int semer(struct Jeu *jeu, int depart)

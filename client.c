@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+#include <signal.h>
 
 #include "client.h"
 
@@ -15,6 +16,10 @@ static void init(void)
       puts("WSAStartup failed !");
       exit(EXIT_FAILURE);
    }
+#else
+   /* Mac/Linux : écrire sur une connexion coupée ne doit pas tuer le client,
+      sinon il n'aurait pas le temps de se reconnecter */
+   signal(SIGPIPE, SIG_IGN);
 #endif
 }
 
@@ -78,11 +83,25 @@ static void app(const char *address, const char *name)
       else if (FD_ISSET(sock, &rdfs))
       {
          int n = recv(sock, recu + recuLen, BUF_SIZE - recuLen - 1, 0);
-         /* server down */
+         /* connexion coupée */
          if (n <= 0)
          {
-            printf("Server disconnected !\n");
-            break;
+            closesocket(sock);
+            if (!etatClient.identifie)
+            {
+               /* pas encore de pseudo accepté : rien à reprendre */
+               printf("Server disconnected !\n");
+               sock = INVALID_SOCKET;
+               break;
+            }
+            sock = reconnecter(address, &etatClient);
+            if (sock == INVALID_SOCKET)
+            {
+               printf("Impossible de se reconnecter au serveur. Au revoir.\n");
+               break;
+            }
+            recuLen = 0; /* un morceau de ligne de l'ancienne connexion ne veut plus rien dire */
+            continue;
          }
          recuLen += n;
          while (1)
@@ -105,10 +124,24 @@ static void app(const char *address, const char *name)
       }
    }
 
-   end_connection(sock);
+   if (sock != INVALID_SOCKET)
+   {
+      end_connection(sock);
+   }
 }
 
 static int init_connection(const char *address)
+{
+   /* première connexion : si elle échoue, on arrête le programme */
+   SOCKET sock = tenterConnexion(address, 1);
+   if (sock == INVALID_SOCKET)
+   {
+      exit(EXIT_FAILURE);
+   }
+   return sock;
+}
+
+static SOCKET tenterConnexion(const char *address, int afficherErreurs)
 {
    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
    SOCKADDR_IN sin = {0};
@@ -116,15 +149,22 @@ static int init_connection(const char *address)
 
    if (sock == INVALID_SOCKET)
    {
-      perror("socket()");
-      exit(errno);
+      if (afficherErreurs)
+      {
+         perror("socket()");
+      }
+      return INVALID_SOCKET;
    }
 
    hostinfo = gethostbyname(address);
    if (hostinfo == NULL)
    {
-      fprintf(stderr, "Unknown host %s.\n", address);
-      exit(EXIT_FAILURE);
+      if (afficherErreurs)
+      {
+         fprintf(stderr, "Unknown host %s.\n", address);
+      }
+      closesocket(sock);
+      return INVALID_SOCKET;
    }
 
    sin.sin_addr = *(IN_ADDR *)hostinfo->h_addr_list[0];
@@ -133,11 +173,43 @@ static int init_connection(const char *address)
 
    if (connect(sock, (SOCKADDR *)&sin, sizeof(SOCKADDR)) == SOCKET_ERROR)
    {
-      perror("connect()");
-      exit(errno);
+      if (afficherErreurs)
+      {
+         perror("connect()");
+      }
+      closesocket(sock);
+      return INVALID_SOCKET;
    }
 
    return sock;
+}
+
+static SOCKET reconnecter(const char *address, EtatClient *e)
+{
+   printf("Connexion au serveur perdue. Tentative de reconnexion...\n");
+   for (int essai = 1; essai <= RECONNEXION_ESSAIS; essai++)
+   {
+#ifdef WIN32
+      Sleep(RECONNEXION_PAUSE * 1000);
+#else
+      sleep(RECONNEXION_PAUSE);
+#endif
+      SOCKET sock = tenterConnexion(address, 0); /* 0 : pas de message d'erreur à chaque essai */
+      if (sock != INVALID_SOCKET)
+      {
+         printf("Reconnecté au serveur (essai %d).\n", essai);
+         /* on repart de zéro : c'est le serveur qui dira, avec RESUME, si une partie reprend */
+         e->identifie = 0;
+         e->monCamp = -1;
+         e->partieObservee = 0;
+         strcpy(e->adversaire, "");
+         char ligne[BUF_SIZE];
+         snprintf(ligne, sizeof ligne, "LOGIN %s\n", e->monPseudo);
+         write_server(sock, ligne);
+         return sock;
+      }
+   }
+   return INVALID_SOCKET;
 }
 
 static void end_connection(int sock)
@@ -147,10 +219,11 @@ static void end_connection(int sock)
 
 static void write_server(SOCKET sock, const char *buffer)
 {
+   /* pas d'exit si l'envoi échoue : la coupure sera vue par recv() dans app(),
+      qui lancera la reconnexion */
    if (send(sock, buffer, strlen(buffer), 0) < 0)
    {
       perror("send()");
-      exit(errno);
    }
 }
 
@@ -189,6 +262,45 @@ static void traiterMessage(EtatClient *e, char *ligne)
          printf("Erreur lors du parsing de la commande START.\n");
       }
    }
+   else if (strncmp(ligne, "RESUME ", 7) == 0)
+   {
+      /* on s'est reconnecté et le serveur nous remet dans notre partie */
+      if (sscanf(ligne, "RESUME %d %20s %d", &id, adv, &camp) == 3)
+      {
+         e->monCamp = camp;
+         snprintf(e->adversaire, sizeof e->adversaire, "%s", adv);
+         printf("Partie %d reprise contre %s, vous êtes toujours le joueur %d (%s).\n", id, adv, camp,
+                camp == 0 ? "rangée du bas" : "rangée du haut");
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande RESUME.\n");
+      }
+   }
+   else if (strncmp(ligne, "RESUMED ", 8) == 0)
+   {
+      if (sscanf(ligne, "RESUMED %d %20s", &id, adv) == 2)
+      {
+         printf("%s est revenu : la partie %d reprend.\n", adv, id);
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande RESUMED.\n");
+      }
+   }
+   else if (strncmp(ligne, "PAUSE ", 6) == 0)
+   {
+      int secondes;
+      if (sscanf(ligne, "PAUSE %d %20s %d", &id, adv, &secondes) == 3)
+      {
+         printf("%s s'est déconnecté : partie %d en pause. S'il ne revient pas dans %d s, la partie se termine.\n",
+                adv, id, secondes);
+      }
+      else
+      {
+         printf("Erreur lors du parsing de la commande PAUSE.\n");
+      }
+   }
    else if (strncmp(ligne, "BOARD ", 6) == 0)
    {
       struct Jeu jeu;
@@ -220,7 +332,6 @@ static void traiterMessage(EtatClient *e, char *ligne)
          return;
       }
       jeu.joueurCourant = atoi(p);
-      printf("1 2 3 4 5 6\n");
       plateauEnTexte(&jeu, texte, sizeof texte);
       printf("%s", texte);
       if (e->partieObservee != 0)

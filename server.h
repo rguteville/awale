@@ -30,6 +30,8 @@ typedef struct in_addr IN_ADDR;
 
 #endif
 
+#include <time.h>         /* time_t, time, difftime */
+
 #include "awale.h"
 #include "commun.h"       /* PSEUDO_MAX, BIO_LIGNES_MAX, BIO_LIGNE_MAX */
 #include "sauvegarde.h"   /* PartieSauvee, sauverPartie, ... */
@@ -43,6 +45,8 @@ typedef struct in_addr IN_ADDR;
 
 #define MAX_PARTIES 50
 #define MAX_OBSERVATEURS 10
+
+#define DELAI_RECONNEXION 30 /* secondes laissées à un joueur déconnecté pour revenir dans sa partie */
 
 enum Etat
 {
@@ -71,7 +75,9 @@ typedef struct
    int active;                            /* 1 si la partie est en cours, 0 si la case est libre */
    int id;                                /* identifiant affiché aux joueurs (START, BOARD, WATCH <id>) */
    struct Jeu jeu;                        /* votre moteur */
-   SOCKET joueurs[2];                     /* joueurs[0] joue le camp 0, joueurs[1] le camp 1 */
+   SOCKET joueurs[2];                     /* joueurs[0] joue le camp 0, joueurs[1] le camp 1.
+                                             INVALID_SOCKET si le joueur est déconnecté (partie en pause) */
+   time_t deconnecteDepuis[2];            /* heure de la déconnexion du joueur de ce camp, 0 s'il est là */
    SOCKET observateurs[MAX_OBSERVATEURS]; /* pour plus tard */
    int nbObservateurs;
    PartieSauvee historique;
@@ -124,6 +130,11 @@ static void cmdMsg(Serveur *s, int i, char *args);
 static void cmdAll(Serveur *s, int i, char *args);
 static void cmdReplay(Serveur *s, int i, char *args);
 static void cmdHistory(Serveur *s, int i, char *args);
+static int campDuClient(const Partie *partie, SOCKET sock);           /* 0 ou 1 */
+static void prevenirPartie(const Partie *partie, const char *ligne);  /* aux joueurs présents + observateurs */
+static void suspendrePartie(Serveur *s, int i);                       /* i se déconnecte en partie */
+static void reprendrePartie(Serveur *s, int i);                       /* après LOGIN : i avait une partie en pause ? */
+static void verifierDelais(Serveur *s);                               /* fin des parties dont le délai est dépassé */
 
 
 
