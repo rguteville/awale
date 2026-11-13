@@ -352,6 +352,11 @@ void traiterSaisie(EtatClient *e, char *ligne)
    {
       return;
    }
+   if (strcmp(commande, "FRIEND") == 0 && strcmp(args, e->monPseudo) == 0)
+   {
+      echec("Vous ne pouvez pas vous ajouter vous-même en ami.");
+      return;
+   }
    if (strcmp(commande, "PRIVATE") == 0)
    {
       /* "prive on", "prive oui", "PRIVATE ON"... -> ON / OFF */

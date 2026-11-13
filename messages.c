@@ -12,12 +12,6 @@
    Chaque fonction reçoit la suite de la ligne (après le mot-clé) dans args.
    --------------------------------------------------------------------------- */
 
-/* "bonjour" -> "Bonjour" (les textes d'erreur du serveur commencent en minuscule) */
-static void majuscule(char *s)
-{
-   s[0] = toupper((unsigned char)s[0]);
-}
-
 /* lit "<id> <c0> ... <c11> <score0> <score1> <joueur_courant>" ; renvoie 1 si tout y est */
 static int lirePlateau(char *args, int *id, struct Jeu *jeu)
 {
@@ -835,6 +829,10 @@ static void infoServeur(EtatClient *e, char *args)
    {
       info("%s vient de partir.", qui);
    }
+   else if (strstr(args, "sauvegarde abime") != NULL)
+   {
+      alerte("La sauvegarde de cette partie est abîmée : le rejeu s'arrête ici.");
+   }
    else
    {
       info("%s", args);
@@ -867,13 +865,147 @@ static void okAutre(EtatClient *e, char *args)
    succes("%s", args);
 }
 
+/* Les textes d'erreur du serveur parlent le langage du protocole ("usage : FRIEND <pseudo>"),
+   sans accents. Le client ne les affiche donc pas tels quels : il explique l'erreur avec ce que
+   le joueur tape vraiment ("ami <pseudo>"), grâce à la dernière commande envoyée. */
+
+typedef struct
+{
+   const char *commande; /* commande du protocole */
+   const char *usage;    /* ce que le joueur tape dans ce client */
+} Usage;
+
+static const Usage USAGES[] = {
+    {"CHALLENGE", "defier <pseudo>"},
+    {"PLAY", "un chiffre de 1 à 6 (la case de votre rangée)"},
+    {"WATCH", "observer <numéro>   (parties pour voir les numéros)"},
+    {"MSG", "@pseudo <message>"},
+    {"ALL", "tous <message>"},
+    {"BIO", "bio [pseudo]"},
+    {"BIOADD", "bioajout <texte>   (100 caractères au plus)"},
+    {"FRIEND", "ami <pseudo>   (un joueur connecté, pas vous-même)"},
+    {"UNFRIEND", "plusami <pseudo>   (amis pour voir votre liste)"},
+    {"PRIVATE", "prive on   ou   prive off"},
+    {"HISTORY", "historique [pseudo]"},
+    {"REPLAY", "revoir <numéro>   (historique pour voir les numéros)"},
+    {"RANK", "classement [pseudo]"},
+};
+
+#define NB_USAGES ((int)(sizeof USAGES / sizeof USAGES[0]))
+
+static const char *usageDe(const char *commande)
+{
+   for (int k = 0; k < NB_USAGES; k++)
+   {
+      if (strcmp(USAGES[k].commande, commande) == 0)
+      {
+         return USAGES[k].usage;
+      }
+   }
+   return NULL;
+}
+
+/* commande mal écrite (argument manquant ou invalide) */
+static void erreurSyntaxe(EtatClient *e, const char *t)
+{
+   const char *cmd = e->derniereCommande;
+   if (!e->identifie)
+   {
+      echec("Pseudo invalide : 1 à 20 lettres, chiffres ou _ (sans espace ni accent). Choisissez-en un autre :");
+   }
+   else if (strstr(t, "vous-meme") != NULL && strcmp(cmd, "CHALLENGE") == 0)
+   {
+      echec("Vous ne pouvez pas vous défier vous-même.");
+   }
+   else if (strstr(t, "trop longue") != NULL && strcmp(cmd, "BIOADD") == 0)
+   {
+      echec("Ligne de bio trop longue : %d caractères au plus.", BIO_LIGNE_MAX);
+   }
+   else if (strstr(t, "trop longue") != NULL)
+   {
+      echec("Ligne trop longue.");
+   }
+   else if (strcmp(cmd, "PLAY") == 0)
+   {
+      echec("Choisissez une case entre 1 et 6.");
+   }
+   else if (usageDe(cmd) != NULL)
+   {
+      echec("Format attendu : %s%s%s", coul(C_GRAS), usageDe(cmd), coul(C_RESET));
+   }
+   else
+   {
+      echec("Commande mal écrite. Tapez %saide%s pour voir comment l'utiliser.", coul(C_GRAS), coul(C_RESET));
+   }
+}
+
+/* commande impossible dans la situation actuelle */
+static void erreurEtat(EtatClient *e, const char *t)
+{
+   const char *cmd = e->derniereCommande;
+   if (strcmp(cmd, "PLAY") == 0 || strcmp(cmd, "FORFEIT") == 0)
+   {
+      echec("Vous n'êtes pas en partie. Lancez-en une avec %sdefier <pseudo>%s.", coul(C_GRAS), coul(C_RESET));
+   }
+   else if ((strcmp(cmd, "ACCEPT") == 0 || strcmp(cmd, "REFUSE") == 0) && strstr(t, "plus valide") != NULL)
+   {
+      echec("Ce défi n'est plus valable : son auteur est parti.");
+   }
+   else if (strcmp(cmd, "ACCEPT") == 0 || strcmp(cmd, "REFUSE") == 0)
+   {
+      echec("Personne ne vous a défié.");
+   }
+   else if (strcmp(cmd, "CANCEL") == 0)
+   {
+      echec("Vous n'avez pas lancé de défi.");
+   }
+   else if (strcmp(cmd, "UNWATCH") == 0)
+   {
+      echec("Vous ne regardez aucune partie.");
+   }
+   else if (strcmp(cmd, "LOGIN") == 0)
+   {
+      echec("Vous êtes déjà connecté sous le pseudo %s.", e->monPseudo);
+   }
+   else if (strcmp(cmd, "CHALLENGE") == 0 || strcmp(cmd, "WATCH") == 0 || strcmp(cmd, "REPLAY") == 0)
+   {
+      /* dire précisément ce qui bloque, et comment s'en sortir */
+      if (e->partie != 0)
+      {
+         echec("Pas pendant une partie : finissez-la d'abord (ou abandonner).");
+      }
+      else if (e->defiDe[0] != '\0')
+      {
+         echec("%s vous a déjà défié : tapez %so%s pour accepter ou %sn%s pour refuser.", e->defiDe,
+               coul(C_GRAS), coul(C_RESET), coul(C_GRAS), coul(C_RESET));
+      }
+      else if (e->defiA[0] != '\0')
+      {
+         echec("Vous attendez déjà la réponse de %s : tapez %sannuler%s pour retirer ce défi.", e->defiA,
+               coul(C_GRAS), coul(C_RESET));
+      }
+      else if (e->partieObservee != 0)
+      {
+         echec("Vous regardez une partie : tapez %sarreter%s d'abord.", coul(C_GRAS), coul(C_RESET));
+      }
+      else
+      {
+         echec("Pas maintenant : terminez d'abord votre partie, votre défi ou votre observation.");
+      }
+   }
+   else
+   {
+      echec("Impossible pour l'instant. Tapez %saide%s pour voir ce que vous pouvez faire.", coul(C_GRAS), coul(C_RESET));
+   }
+}
+
 /* une erreur du serveur, expliquée avec ce qu'on sait de la situation */
 static void err(EtatClient *e, char *args)
 {
    char code[16] = "", t[BUF_SIZE] = "";
    sscanf(args, "%15s %1023[^\n]", code, t);
-   majuscule(t);
    const char *cmd = e->derniereCommande;
+   char qui[PSEUDO_MAX + 1] = "";
 
    if (strcmp(code, "UNKNOWN") == 0)
    {
@@ -883,9 +1015,13 @@ static void err(EtatClient *e, char *args)
    {
       echec("Ce pseudo est déjà pris. Choisissez-en un autre :");
    }
-   else if (strcmp(code, "SYNTAX") == 0 && !e->identifie)
+   else if (strcmp(code, "SYNTAX") == 0)
    {
-      echec("Pseudo invalide : 1 à 20 lettres, chiffres ou _ (sans espace ni accent). Choisissez-en un autre :");
+      erreurSyntaxe(e, t);
+   }
+   else if (strcmp(code, "STATE") == 0)
+   {
+      erreurEtat(e, t);
    }
    else if (strcmp(code, "NOTYOURTURN") == 0)
    {
@@ -893,16 +1029,20 @@ static void err(EtatClient *e, char *args)
    }
    else if (strcmp(code, "ILLEGAL") == 0)
    {
-      t[0] = tolower((unsigned char)t[0]); /* suite de phrase : pas de majuscule */
-      echec("Coup impossible : %s.", t);
-      if (strstr(t, "sans graine") != NULL)
+      int numero;
+      if (sscanf(t, "la case %d est vide", &numero) == 1)
       {
-         info("Règle : on doit toujours laisser des graines à l'adversaire. Choisissez une autre case.");
+         echec("Coup impossible : la case %d est vide.", numero);
+      }
+      else
+      {
+         echec("Coup impossible : il ne resterait plus aucune graine à votre adversaire.");
+         info("Règle : on doit toujours lui laisser de quoi jouer. Choisissez une autre case.");
       }
    }
    else if (strcmp(code, "PAUSED") == 0)
    {
-      alerte("Partie en pause : attendez que %s revienne.", e->adversaire);
+      alerte("Partie en pause : attendez le retour de %s.", e->adversaire);
    }
    else if (strcmp(code, "DENIED") == 0)
    {
@@ -910,7 +1050,14 @@ static void err(EtatClient *e, char *args)
    }
    else if (strcmp(code, "BUSY") == 0)
    {
-      echec("%s. Réessayez plus tard.", t);
+      if (sscanf(t, "%20s n'est pas libre", qui) == 1 && strstr(t, "n'est pas libre") != NULL)
+      {
+         echec("%s n'est pas disponible (en partie ou déjà en plein défi). Réessayez plus tard.", qui);
+      }
+      else
+      {
+         echec("Trop de parties en cours sur le serveur. Réessayez plus tard.");
+      }
    }
    else if (strcmp(code, "NOTFOUND") == 0)
    {
@@ -924,43 +1071,37 @@ static void err(EtatClient *e, char *args)
       }
       else if (strcmp(cmd, "UNFRIEND") == 0)
       {
-         echec("%s.", t);
+         sscanf(t, "%20s", qui);
+         echec("%s ne fait pas partie de vos amis. Tapez %samis%s pour voir la liste.", qui, coul(C_GRAS), coul(C_RESET));
       }
       else
       {
          echec("Aucun joueur connecté ne s'appelle ainsi. Tapez %sjoueurs%s pour voir qui est en ligne.", coul(C_GRAS), coul(C_RESET));
       }
    }
-   else if (strcmp(code, "STATE") == 0)
+   else if (strcmp(code, "FULL") == 0)
    {
-      if (strcmp(cmd, "PLAY") == 0 || strcmp(cmd, "FORFEIT") == 0)
+      if (strcmp(cmd, "BIOADD") == 0)
       {
-         echec("Vous n'êtes pas en partie. Lancez-en une avec %sdefier <pseudo>%s.", coul(C_GRAS), coul(C_RESET));
+         echec("Votre bio est pleine (%d lignes). Tapez %sbioeffacer%s pour recommencer.", BIO_LIGNES_MAX, coul(C_GRAS), coul(C_RESET));
       }
-      else if (strcmp(cmd, "ACCEPT") == 0 || strcmp(cmd, "REFUSE") == 0)
+      else if (strcmp(cmd, "FRIEND") == 0)
       {
-         echec("Personne ne vous a défié.");
+         echec("Liste d'amis pleine. Tapez %splusami <pseudo>%s pour faire de la place.", coul(C_GRAS), coul(C_RESET));
       }
-      else if (strcmp(cmd, "CANCEL") == 0)
+      else if (strcmp(cmd, "WATCH") == 0)
       {
-         echec("Vous n'avez pas lancé de défi.");
-      }
-      else if (strcmp(cmd, "UNWATCH") == 0)
-      {
-         echec("Vous ne regardez aucune partie.");
-      }
-      else if (strcmp(cmd, "CHALLENGE") == 0 || strcmp(cmd, "WATCH") == 0 || strcmp(cmd, "REPLAY") == 0)
-      {
-         echec("Pas maintenant : terminez d'abord votre partie, votre défi ou votre observation.");
+         echec("Trop de spectateurs sur cette partie. Réessayez plus tard.");
       }
       else
       {
-         echec("%s.", t);
+         echec("Le serveur est plein. Réessayez plus tard.");
       }
    }
    else
    {
-      echec("%s.", t[0] != '\0' ? t : code);
+      /* code inconnu de ce client (serveur plus récent ?) : on montre le texte du serveur tel quel */
+      echec("%s %s", code, t);
    }
 }
 
