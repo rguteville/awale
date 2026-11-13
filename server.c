@@ -359,6 +359,14 @@ static void traiterLigne(Serveur *s, int i, char *ligne)
    {
       cmdReplay(s, i, args);
    }
+   else if (strcmp(commande, "FRIEND") == 0)
+   {
+      cmdFriend(s, i, args);
+   }
+   else if (strcmp(commande, "UNFRIEND") == 0)
+   {
+      cmdUnfriend(s, i, args);
+   }
    else
    {
       envoyer(s->clients[i].sock, "ERR UNKNOWN commande inconnue");
@@ -935,6 +943,64 @@ static void cmdReplay(Serveur *s, int i, char *args)
    envoyer(s->clients[i].sock, "END %d %s %s", id, partieSauvee.gagnant, partieSauvee.raison);
 }
 
+static void cmdFriend(Serveur *s, int i, char *args)
+{
+   
+   if (args[0] == '\0' || strcmp(args, s->clients[i].name) == 0)
+   {
+      envoyer(s->clients[i].sock, "ERR SYNTAX usage : FRIEND <pseudo>");
+      return;
+   }
+   int j=trouverParPseudo(s,args);
+   if (j==-1)
+   {
+      envoyer(s->clients[i].sock, "ERR NOTFOUND pseudo inconnu");
+      return;
+   }
+   for (int k=0;k<s->clients[i].nbAmis;k++)
+   {
+      if (strcmp(s->clients[i].amis[k],args)==0)
+      {
+         
+         envoyer(s->clients[i].sock, "OK FRIEND %s", args);
+         return;
+      }
+   }
+   
+   if (s->clients[i].nbAmis==MAX_AMIS)
+   {
+      envoyer(s->clients[i].sock, "ERR FULL liste d'amis pleine (20 max)");
+      return;
+   }
+   strcpy(s->clients[i].amis[s->clients[i].nbAmis],args);
+   s->clients[i].nbAmis++;
+   envoyer(s->clients[i].sock, "OK FRIEND %s", args);
+}
+
+static void cmdUnfriend(Serveur *s, int i, char *args)
+{
+   if (args[0] == '\0')
+   {
+      envoyer(s->clients[i].sock, "ERR SYNTAX usage : UNFRIEND <pseudo>");
+      return;
+   }
+   /* pas de trouverParPseudo : on doit pouvoir retirer un ami déconnecté */
+   for (int k=0;k<s->clients[i].nbAmis;k++)
+   {
+      if (strcmp(s->clients[i].amis[k],args)==0)
+      {
+         int dernier = s->clients[i].nbAmis - 1;
+         if (k != dernier) 
+         {
+            strcpy(s->clients[i].amis[k], s->clients[i].amis[dernier]);
+         }
+         s->clients[i].nbAmis--;
+         envoyer(s->clients[i].sock, "OK UNFRIEND %s", args);
+         return;
+      }
+   }
+   envoyer(s->clients[i].sock, "ERR NOTFOUND %s n'est pas dans votre liste d'amis", args);
+}
 
 int main(void)
 {

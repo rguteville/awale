@@ -128,6 +128,8 @@ static void cmdBioAdd(Serveur *s, int i, char *args);
 static void cmdMsg(Serveur *s, int i, char *args);
 static void cmdAll(Serveur *s, int i, char *args);
 static void cmdReplay(Serveur *s, int i, char *args);
+static void cmdFriend(Serveur *s, int i, char *args);
+static void cmdUnfriend(Serveur *s, int i, char *args);
 
 
 #endif /* guard */
