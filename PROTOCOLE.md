@@ -97,6 +97,7 @@ Une bio compte au plus **10 lignes** de **1 à 100 caractères**. Elle est **sau
 | `FRIEND <pseudo>` | tous sauf `NON_IDENTIFIE` | `OK FRIEND <pseudo>` | `NOTFOUND` (pas connecté), `SYNTAX` (soi-même), `FULL` (20 amis) | 2 |
 | `UNFRIEND <pseudo>` | tous sauf `NON_IDENTIFIE` | `OK UNFRIEND <pseudo>` | `NOTFOUND` (pas dans la liste) | 2 |
 | `PRIVATE ON` / `PRIVATE OFF` | tous sauf `NON_IDENTIFIE` | `OK PRIVATE ON` / `OK PRIVATE OFF` | `SYNTAX` | 2 |
+| `FRIENDS` | tous sauf `NON_IDENTIFIE` | `FRIENDS <p1> <p2> ...` | — | 3 |
 
 - L'amitié est **à sens unique** : « C est ami de A » veut dire que **A** a tapé `FRIEND C`. C n'a rien à faire.
 - `FRIEND` n'accepte qu'un joueur **connecté**, mais la liste retient des **pseudos** : C reste ami de A même s'il se déconnecte puis revient.
@@ -104,6 +105,7 @@ Une bio compte au plus **10 lignes** de **1 à 100 caractères**. Elle est **sau
 - Une partie est **privée** si **au moins un** des deux joueurs est en `PRIVATE ON` au moment du `WATCH`. Seuls les amis **d'au moins un des deux joueurs** peuvent alors l'observer ; les autres reçoivent `ERR DENIED`.
 - Passer en `PRIVATE ON` en cours de partie n'expulse pas les observateurs déjà présents.
 - La liste d'amis et le mode privé sont perdus à la déconnexion.
+- `FRIENDS` affiche **sa propre** liste d'amis (connectés ou non), dans l'ordre de la liste. Liste vide : `FRIENDS` seul. On ne peut pas voir la liste d'un autre joueur.
 
 ### Parties sauvegardées
 
@@ -128,6 +130,7 @@ Il y a deux sortes de messages :
 | `OK <commande> [détails]` | réponse | La commande a réussi |
 | `ERR <code> <texte>` | réponse | La commande a échoué (codes en section 5) |
 | `USERS <p1> <p2> ...` | réponse à `LIST` | Joueurs connectés |
+| `FRIENDS <p1> <p2> ...` | réponse à `FRIENDS` | Votre liste d'amis |
 | `GAMES <id>:<j0>:<j1> ...` | réponse à `GAMES` | Parties en cours |
 | `CHALLENGED <pseudo>` | événement | `<pseudo>` vous défie |
 | `REFUSED <pseudo>` | événement | `<pseudo>` a refusé votre défi |

@@ -371,6 +371,10 @@ static void traiterLigne(Serveur *s, int i, char *ligne)
    {
       cmdPrivate(s, i, args);
    }
+   else if (strcmp(commande, "FRIENDS") == 0)
+   {
+      cmdFriends(s, i);
+   }
    else
    {
       envoyer(s->clients[i].sock, "ERR UNKNOWN commande inconnue");
@@ -547,7 +551,7 @@ static void cmdAccept(Serveur *s, int i)
    partie->historique.id = partie->id;
    strcpy(partie->historique.joueurs[campDeI], s->clients[i].name);
    strcpy(partie->historique.joueurs[1 - campDeI], s->clients[j].name);
-   partie->historique.privee = 0;
+   partie->historique.privee = s->clients[i].prive || s->clients[j].prive;
    partie->historique.nbCoups = 0;
 
    initJeu(&partie->jeu, 0);
@@ -1050,6 +1054,18 @@ static void cmdPrivate(Serveur *s, int i, char *args)
    {
       envoyer(s->clients[i].sock, "ERR SYNTAX usage : PRIVATE OFF|ON");
    }
+}
+
+static void cmdFriends(Serveur *s, int i)
+{
+   
+   char liste[BUF_SIZE];
+   int pos = snprintf(liste, sizeof liste, "FRIENDS");
+   for (int k = 0; k < s->clients[i].nbAmis; k++)
+   {
+      pos += snprintf(liste + pos, sizeof liste - pos, " %s", s->clients[i].amis[k]);
+   }
+   envoyer(s->clients[i].sock, "%s", liste);
 }
 
 int main(void)
